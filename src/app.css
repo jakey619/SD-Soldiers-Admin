@@ -109,7 +109,7 @@ textarea {
 
 .summary-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 16px;
   margin-bottom: 24px;
 }
@@ -353,6 +353,10 @@ textarea {
   align-items: flex-start;
 }
 
+.player-main {
+  min-width: 0;
+}
+
 .player-name {
   font-size: 22px;
   font-weight: 800;
@@ -364,6 +368,87 @@ textarea {
   font-size: 15px;
   margin-top: 6px;
   color: #dbeafe;
+}
+
+.badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.badge-good {
+  background: rgba(21, 128, 61, 0.22);
+  color: #bbf7d0;
+  border-color: rgba(21, 128, 61, 0.35);
+}
+
+.badge-info {
+  background: rgba(37, 99, 235, 0.22);
+  color: #bfdbfe;
+  border-color: rgba(37, 99, 235, 0.35);
+}
+
+.badge-neutral {
+  background: rgba(71, 85, 105, 0.28);
+  color: #e2e8f0;
+  border-color: rgba(148, 163, 184, 0.25);
+}
+
+.badge-team {
+  background: rgba(91, 33, 182, 0.22);
+  color: #ddd6fe;
+  border-color: rgba(139, 92, 246, 0.3);
+}
+
+.score-line {
+  margin-top: 12px;
+  font-size: 15px;
+  color: #dbeafe;
+}
+
+.score-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 74px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 800;
+  margin-left: 6px;
+}
+
+.score-good {
+  background: rgba(21, 128, 61, 0.24);
+  color: #bbf7d0;
+}
+
+.score-info {
+  background: rgba(37, 99, 235, 0.24);
+  color: #bfdbfe;
+}
+
+.score-warn {
+  background: rgba(202, 138, 4, 0.24);
+  color: #fde68a;
+}
+
+.score-neutral {
+  background: rgba(71, 85, 105, 0.28);
+  color: #e2e8f0;
 }
 
 .player-actions {

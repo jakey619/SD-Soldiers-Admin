@@ -165,6 +165,14 @@ function ScoreSelect({
   );
 }
 
+function getScoreTone(score: number | null | undefined) {
+  if (score == null) return "neutral";
+  if (score >= 55) return "good";
+  if (score >= 45) return "info";
+  if (score >= 35) return "warn";
+  return "neutral";
+}
+
 export default function App() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [latestEvaluations, setLatestEvaluations] = useState<
@@ -383,6 +391,11 @@ export default function App() {
     () => players.filter((p) => p.checked_in).length,
     [players]
   );
+
+  const evaluatedCount = useMemo(() => {
+    const ids = new Set(latestEvaluations.map((ev) => ev.player_id));
+    return ids.size;
+  }, [latestEvaluations]);
 
   const notCheckedInCount = players.length - checkedInCount;
 
@@ -612,6 +625,10 @@ export default function App() {
           <div className="summary-label">Not Checked In</div>
           <div className="summary-value">{notCheckedInCount}</div>
         </div>
+        <div className="summary-card">
+          <div className="summary-label">Evaluated</div>
+          <div className="summary-value">{evaluatedCount}</div>
+        </div>
       </div>
 
       <div className="tab-row">
@@ -734,76 +751,112 @@ export default function App() {
             </div>
 
             <div className="player-list">
-              {filteredPlayers.map((player) => (
-                <div key={player.id} className="player-card">
-                  <div className="player-card-header">
-                    <div>
-                      <div className="player-name">
-                        {player.last_name}, {player.first_name}
-                      </div>
-                      <div className="player-meta">
-                        {player.grade_group} • {player.grade}
-                      </div>
-                      <div className="player-meta">{player.school}</div>
-                      <div className="player-contact">
-                        Player: {player.player_phone || "-"}
-                      </div>
-                      <div className="player-contact">
-                        Parent: {player.parent_phone || "-"}
-                      </div>
-                      <div className="player-contact">
-                        Email: {player.parent_email || "-"}
-                      </div>
-                    </div>
+              {filteredPlayers.map((player) => {
+                const latest = latestEvalMap.get(player.id);
+                const hasEval = Boolean(latest);
+                const scoreTone = getScoreTone(latest?.total_score);
 
-                    <div className="player-actions">
-                      <button
-                        type="button"
-                        onClick={() => toggleCheckIn(player)}
-                        className="secondary-button"
-                      >
-                        {player.checked_in ? "Checked In" : "Mark Present"}
-                      </button>
+                return (
+                  <div key={player.id} className="player-card">
+                    <div className="player-card-header">
+                      <div className="player-main">
+                        <div className="player-name">
+                          {player.last_name}, {player.first_name}
+                        </div>
+                        <div className="player-meta">
+                          {player.grade_group} • {player.grade}
+                        </div>
+                        <div className="player-meta">{player.school}</div>
 
-                      <select
-                        className="select"
-                        value={player.suggested_team ?? "Undecided"}
-                        onChange={(e) =>
-                          updateSuggestedTeam(
-                            player,
-                            e.target.value as TeamOption
-                          )
-                        }
-                      >
-                        {TEAM_OPTIONS.map((team) => (
-                          <option key={team} value={team}>
-                            {team}
-                          </option>
-                        ))}
-                      </select>
+                        <div className="badge-row">
+                          <span
+                            className={`badge ${
+                              player.checked_in ? "badge-good" : "badge-neutral"
+                            }`}
+                          >
+                            {player.checked_in ? "Checked In" : "Not Checked In"}
+                          </span>
 
-                      <button
-                        type="button"
-                        className="secondary-button"
-                        onClick={() => startEditPlayer(player)}
-                      >
-                        Edit
-                      </button>
+                          <span
+                            className={`badge ${
+                              hasEval ? "badge-info" : "badge-neutral"
+                            }`}
+                          >
+                            {hasEval ? "Evaluated" : "Not Evaluated"}
+                          </span>
 
-                      <button
-                        type="button"
-                        className="secondary-button"
-                        onClick={() => {
-                          setSelectedPlayerId(player.id);
-                          setTab("evaluations");
-                        }}
-                      >
-                        Evaluate
-                      </button>
+                          <span className="badge badge-team">
+                            {player.suggested_team ?? "Undecided"}
+                          </span>
+                        </div>
+
+                        <div className="score-line">
+                          Latest Score:{" "}
+                          <span className={`score-pill score-${scoreTone}`}>
+                            {latest?.total_score ?? "-"} / 65
+                          </span>
+                        </div>
+
+                        <div className="player-contact">
+                          Player: {player.player_phone || "-"}
+                        </div>
+                        <div className="player-contact">
+                          Parent: {player.parent_phone || "-"}
+                        </div>
+                        <div className="player-contact">
+                          Email: {player.parent_email || "-"}
+                        </div>
+                      </div>
+
+                      <div className="player-actions">
+                        <button
+                          type="button"
+                          onClick={() => toggleCheckIn(player)}
+                          className="secondary-button"
+                        >
+                          {player.checked_in ? "Checked In" : "Mark Present"}
+                        </button>
+
+                        <select
+                          className="select"
+                          value={player.suggested_team ?? "Undecided"}
+                          onChange={(e) =>
+                            updateSuggestedTeam(
+                              player,
+                              e.target.value as TeamOption
+                            )
+                          }
+                        >
+                          {TEAM_OPTIONS.map((team) => (
+                            <option key={team} value={team}>
+                              {team}
+                            </option>
+                          ))}
+                        </select>
+
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          onClick={() => startEditPlayer(player)}
+                        >
+                          Edit
+                        </button>
+
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          onClick={() => {
+                            setSelectedPlayerId(player.id);
+                            setTab("evaluations");
+                          }}
+                        >
+                          Evaluate
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
 
               {filteredPlayers.length === 0 && <p>No players found.</p>}
             </div>
