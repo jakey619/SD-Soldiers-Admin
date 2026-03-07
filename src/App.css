@@ -1,8 +1,14 @@
 body {
   margin: 0;
   font-family: Arial, sans-serif;
-  background: #06153a;
   color: white;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(25, 45, 210, 0.35) 0%, transparent 30%),
+    radial-gradient(circle at 82% 18%, rgba(8, 24, 120, 0.45) 0%, transparent 28%),
+    radial-gradient(circle at 78% 82%, rgba(40, 55, 255, 0.28) 0%, transparent 30%),
+    radial-gradient(circle at 15% 85%, rgba(5, 10, 70, 0.45) 0%, transparent 30%),
+    linear-gradient(145deg, #020617 0%, #030b3d 38%, #020b6d 72%, #010414 100%);
+  background-attachment: fixed;
 }
 
 * {
@@ -16,27 +22,44 @@ textarea {
   font: inherit;
 }
 
+#root {
+  min-height: 100vh;
+}
+
 .app-shell {
   min-height: 100vh;
   padding: 24px;
-  background: linear-gradient(180deg, #06153a 0%, #081735 100%);
+  background:
+    radial-gradient(circle at 35% 25%, rgba(20, 34, 170, 0.18) 0%, transparent 32%),
+    radial-gradient(circle at 70% 70%, rgba(16, 28, 140, 0.16) 0%, transparent 28%);
 }
 
 .app-header {
-  margin-bottom: 20px;
+  margin-bottom: 22px;
 }
 
 .app-title {
-  margin: 0 0 8px 0;
-  font-size: 48px;
-  font-weight: 800;
-  line-height: 1.1;
+  margin: 0;
+  font-size: 52px;
+  font-weight: 900;
+  line-height: 1.02;
+  letter-spacing: -0.02em;
+  color: #f8fafc;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.35);
+}
+
+.app-subtitle {
+  margin: 8px 0 8px 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #93c5fd;
 }
 
 .app-status {
   margin: 0;
-  font-size: 16px;
-  color: #d1d5db;
+  font-size: 15px;
+  color: #dbeafe;
+  opacity: 0.95;
 }
 
 .tab-row {
@@ -49,19 +72,25 @@ textarea {
 .tab-button,
 .primary-button,
 .secondary-button {
-  border: none;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 14px;
   padding: 14px 18px;
   font-size: 16px;
+  font-weight: 700;
   cursor: pointer;
-  transition: transform 0.15s ease, opacity 0.15s ease,
-    background-color 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    opacity 0.15s ease,
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .tab-button:hover,
 .primary-button:hover,
 .secondary-button:hover {
-  opacity: 0.95;
+  opacity: 0.98;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
 }
 
 .tab-button:active,
@@ -71,23 +100,26 @@ textarea {
 }
 
 .tab-button {
-  background: #111111;
-  color: white;
+  background: rgba(8, 15, 35, 0.72);
+  color: #f8fafc;
+  backdrop-filter: blur(8px);
 }
 
 .tab-button.active {
-  background: #15803d;
+  background: linear-gradient(135deg, #0f7a34 0%, #15803d 100%);
+  color: white;
 }
 
 .primary-button {
-  background: #15803d;
+  background: linear-gradient(135deg, #0f7a34 0%, #15803d 100%);
   color: white;
 }
 
 .secondary-button {
-  background: #111827;
+  background: rgba(17, 24, 39, 0.88);
   color: white;
-  border: 1px solid #334155;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  backdrop-filter: blur(8px);
 }
 
 .content-grid {
@@ -111,19 +143,32 @@ textarea {
 }
 
 .card {
-  border: 1px solid #334155;
-  border-radius: 20px;
-  padding: 18px;
-  background: #081735;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 22px;
+  padding: 20px;
+  background: linear-gradient(
+    180deg,
+    rgba(8, 23, 53, 0.86) 0%,
+    rgba(7, 18, 43, 0.92) 100%
+  );
+  box-shadow:
+    0 14px 38px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(10px);
 }
 
 .sub-card {
-  background: #0b1c44;
+  background: linear-gradient(
+    180deg,
+    rgba(11, 28, 68, 0.95) 0%,
+    rgba(10, 24, 56, 0.95) 100%
+  );
 }
 
 .card h2,
 .card h3 {
   margin-top: 0;
+  color: #f8fafc;
 }
 
 .form-stack {
@@ -136,16 +181,25 @@ textarea {
 .textarea {
   width: 100%;
   padding: 14px 16px;
-  border-radius: 10px;
-  border: 1px solid #6b7280;
-  background: #3f3f46;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(63, 63, 70, 0.68);
   color: white;
   font-size: 16px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.input:focus,
+.select:focus,
+.textarea:focus {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.18);
 }
 
 .input::placeholder,
 .textarea::placeholder {
-  color: #d1d5db;
+  color: #cbd5e1;
 }
 
 .textarea {
@@ -179,17 +233,24 @@ textarea {
 .player-select-button,
 .history-button {
   text-align: left;
-  border: 1px solid #334155;
-  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 14px;
   padding: 12px 14px;
-  background: #111827;
+  background: rgba(17, 24, 39, 0.9);
   color: white;
   cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.player-select-button:hover,
+.history-button:hover {
+  border-color: rgba(96, 165, 250, 0.45);
 }
 
 .player-select-button.active,
 .history-button.active {
-  background: #15803d;
+  background: linear-gradient(135deg, #0f7a34 0%, #15803d 100%);
+  border-color: transparent;
 }
 
 .player-select-name {
@@ -197,10 +258,14 @@ textarea {
 }
 
 .player-card {
-  border: 1px solid #334155;
-  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 20px;
   padding: 16px;
-  background: #081735;
+  background: linear-gradient(
+    180deg,
+    rgba(8, 23, 53, 0.9) 0%,
+    rgba(8, 20, 46, 0.94) 100%
+  );
 }
 
 .player-card-header {
@@ -212,13 +277,15 @@ textarea {
 
 .player-name {
   font-size: 22px;
-  font-weight: 700;
+  font-weight: 800;
+  color: #f8fafc;
 }
 
 .player-meta,
 .player-contact {
-  font-size: 16px;
+  font-size: 15px;
   margin-top: 6px;
+  color: #dbeafe;
 }
 
 .player-actions {
@@ -248,18 +315,21 @@ textarea {
   margin-bottom: 8px;
   margin-top: 6px;
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 700;
+  color: #e2e8f0;
 }
 
 .section-title {
   font-size: 22px;
   margin-bottom: 14px;
+  color: #f8fafc;
 }
 
 .score-total {
-  margin-top: 10px;
+  margin-top: 12px;
   font-size: 22px;
-  font-weight: 700;
+  font-weight: 800;
+  color: #bbf7d0;
 }
 
 .eval-row {
@@ -272,7 +342,8 @@ textarea {
 
 .mode-text {
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 800;
+  color: #bfdbfe;
 }
 
 .roster-title {
@@ -282,29 +353,31 @@ textarea {
 
 .roster-team-title {
   font-size: 24px;
-  font-weight: 700;
+  font-weight: 800;
   margin-bottom: 10px;
 }
 
 .roster-count {
   margin-bottom: 14px;
-  font-size: 18px;
+  font-size: 16px;
+  color: #dbeafe;
 }
 
 .roster-player-card {
-  border: 1px solid #334155;
-  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 16px;
   padding: 12px;
-  background: #0b1c44;
+  background: rgba(11, 28, 68, 0.94);
 }
 
 .roster-player-name {
-  font-weight: 700;
+  font-weight: 800;
   font-size: 18px;
 }
 
 .roster-player-meta {
   margin-top: 6px;
+  color: #dbeafe;
 }
 
 .empty-text {
@@ -324,7 +397,7 @@ textarea {
   }
 
   .app-title {
-    font-size: 38px;
+    font-size: 40px;
   }
 }
 
@@ -335,6 +408,10 @@ textarea {
 
   .app-title {
     font-size: 30px;
+  }
+
+  .app-subtitle {
+    font-size: 16px;
   }
 
   .tab-button,
