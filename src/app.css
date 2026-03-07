@@ -150,7 +150,8 @@ textarea {
 .tab-button,
 .primary-button,
 .secondary-button,
-.filter-chip {
+.filter-chip,
+.door-checkin-button {
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 14px;
   padding: 14px 18px;
@@ -168,7 +169,8 @@ textarea {
 .tab-button:hover,
 .primary-button:hover,
 .secondary-button:hover,
-.filter-chip:hover {
+.filter-chip:hover,
+.door-checkin-button:hover {
   opacity: 0.98;
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
 }
@@ -176,7 +178,8 @@ textarea {
 .tab-button:active,
 .primary-button:active,
 .secondary-button:active,
-.filter-chip:active {
+.filter-chip:active,
+.door-checkin-button:active {
   transform: translateY(1px);
 }
 
@@ -229,6 +232,106 @@ textarea {
   grid-template-columns: 420px 1fr;
   gap: 24px;
   align-items: start;
+}
+
+.door-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+.door-search {
+  margin-bottom: 16px;
+}
+
+.door-list {
+  display: grid;
+  gap: 12px;
+}
+
+.door-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(17, 24, 39, 0.88);
+}
+
+.door-row-main {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.door-name {
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.door-meta {
+  margin-top: 4px;
+  color: #dbeafe;
+}
+
+.door-checkin-button {
+  min-width: 180px;
+  background: linear-gradient(135deg, #0f7a34 0%, #15803d 100%);
+  color: white;
+}
+
+.door-checkin-button.checked {
+  background: rgba(17, 24, 39, 0.88);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.rosters-page {
+  display: grid;
+  gap: 18px;
+}
+
+.rosters-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.rosters-toolbar-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.team-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+.team-stat-card {
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 18px;
+  padding: 16px 18px;
+  background: linear-gradient(
+    180deg,
+    rgba(8, 23, 53, 0.86) 0%,
+    rgba(7, 18, 43, 0.92) 100%
+  );
+}
+
+.team-stat-title {
+  font-size: 18px;
+  font-weight: 800;
+  margin-bottom: 10px;
+}
+
+.team-stat-line {
+  margin-top: 6px;
+  color: #dbeafe;
 }
 
 .roster-grid {
@@ -572,7 +675,7 @@ textarea {
 
 .roster-title {
   font-size: 34px;
-  margin-bottom: 16px;
+  margin: 0;
 }
 
 .roster-team-title {
@@ -751,6 +854,12 @@ textarea {
   gap: 12px;
 }
 
+@media (max-width: 1200px) {
+  .team-stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 @media (max-width: 1100px) {
   .roster-grid {
     grid-template-columns: repeat(2, 1fr);
@@ -815,11 +924,13 @@ textarea {
 
   .tab-button,
   .primary-button,
-  .secondary-button {
+  .secondary-button,
+  .door-checkin-button {
     width: 100%;
   }
 
-  .summary-row {
+  .summary-row,
+  .team-stats-grid {
     grid-template-columns: 1fr;
   }
 
@@ -828,18 +939,23 @@ textarea {
   }
 
   .history-header,
-  .card-header-row {
+  .card-header-row,
+  .rosters-toolbar {
     flex-direction: column;
     align-items: stretch;
   }
 
-  .selected-player-top {
+  .selected-player-top,
+  .roster-player-top,
+  .door-row {
     flex-direction: column;
+    align-items: stretch;
   }
 
   .selected-player-buttons,
   .selected-actions,
-  .camera-actions {
+  .camera-actions,
+  .rosters-toolbar-actions {
     flex-direction: column;
   }
 
@@ -853,5 +969,13 @@ textarea {
 
   .checkin-row {
     align-items: flex-start;
+  }
+
+  .door-row-main {
+    align-items: flex-start;
+  }
+
+  .door-checkin-button {
+    min-width: 100%;
   }
 }

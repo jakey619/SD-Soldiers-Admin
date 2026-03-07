@@ -21,6 +21,8 @@ type TeamOption =
   | "17u Honor"
   | "Undecided";
 
+type MainTab = "attendance" | "door" | "rosters";
+
 type AttendanceFilter =
   | "all"
   | "checked-in"
@@ -99,6 +101,14 @@ type EvalForm = {
   suggested_team: TeamOption;
 };
 
+type TeamStats = {
+  team: TeamOption;
+  count: number;
+  checkedIn: number;
+  evaluated: number;
+  averageScore: number | null;
+};
+
 const TEAM_OPTIONS: TeamOption[] = [
   "15u Salute",
   "15u Honor",
@@ -171,6 +181,24 @@ function getScoreTone(score: number | null | undefined) {
   if (score >= 45) return "info";
   if (score >= 35) return "warn";
   return "neutral";
+}
+
+function csvEscape(value: unknown) {
+  const text = value == null ? "" : String(value);
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function downloadCsv(filename: string, rows: string[][]) {
+  const csv = rows.map((row) => row.map(csvEscape).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.setAttribute("download", filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 function ScoreSelect({
@@ -258,9 +286,7 @@ function CameraCapture({
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: "environment" },
-        },
+        video: { facingMode: { ideal: "environment" } },
         audio: false,
       });
 
@@ -291,12 +317,10 @@ function CameraCapture({
   function capturePhoto() {
     const video = videoRef.current;
     const canvas = canvasRef.current;
-
     if (!video || !canvas) return;
 
     const width = video.videoWidth || 1280;
     const height = video.videoHeight || 720;
-
     canvas.width = width;
     canvas.height = height;
 
@@ -304,13 +328,11 @@ function CameraCapture({
     if (!ctx) return;
 
     ctx.drawImage(video, 0, 0, width, height);
-
     const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
     setPreviewUrl(dataUrl);
 
     const file = dataUrlToFile(dataUrl, `player-photo-${Date.now()}.jpg`);
     onFileReady(file);
-
     stopCamera();
   }
 
@@ -381,20 +403,11 @@ function PhotoPicker({
   return (
     <div className="photo-picker">
       <label className="field-label">Player Photo</label>
-      <CameraCapture
-        onFileReady={(file) => {
-          onFileReady(file);
-        }}
-      />
+      <CameraCapture onFileReady={(file) => onFileReady(file)} />
 
       <div className="photo-divider">or</div>
 
-      <input
-        className="input"
-        type="file"
-        accept="image/*"
-        onChange={handleFileChange}
-      />
+      <input className="input" type="file" accept="image/*" onChange={handleFileChange} />
 
       {currentPhotoUrl && (
         <div className="existing-photo-wrap">
@@ -407,25 +420,21 @@ function PhotoPicker({
 
 export default function App() {
   const [players, setPlayers] = useState<Player[]>([]);
-  const [latestEvaluations, setLatestEvaluations] = useState<
-    LatestEvaluation[]
-  >([]);
+  const [latestEvaluations, setLatestEvaluations] = useState<LatestEvaluation[]>([]);
   const [playerEvaluations, setPlayerEvaluations] = useState<Evaluation[]>([]);
   const [status, setStatus] = useState("Loading...");
   const [search, setSearch] = useState("");
+  const [doorSearch, setDoorSearch] = useState("");
   const [groupFilter, setGroupFilter] = useState("All");
-  const [attendanceFilter, setAttendanceFilter] =
-    useState<AttendanceFilter>("all");
-  const [tab, setTab] = useState<"attendance" | "rosters">("attendance");
+  const [attendanceFilter, setAttendanceFilter] = useState<AttendanceFilter>("all");
+  const [tab, setTab] = useState<MainTab>("attendance");
   const [selectedPlayerId, setSelectedPlayerId] = useState<string>("");
 
   const [isRegistrationOpen, setIsRegistrationOpen] = useState(false);
   const [isEvaluationOpen, setIsEvaluationOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
 
-  const [editingEvaluationId, setEditingEvaluationId] = useState<string | null>(
-    null
-  );
+  const [editingEvaluationId, setEditingEvaluationId] = useState<string | null>(null);
   const [editingPlayerId, setEditingPlayerId] = useState<string | null>(null);
   const [evalForm, setEvalForm] = useState<EvalForm>(initialEvalForm());
 
@@ -439,9 +448,7 @@ export default function App() {
     parent_phone: "",
     parent_email: "",
   });
-  const [registrationPhotoFile, setRegistrationPhotoFile] = useState<File | null>(
-    null
-  );
+  const [registrationPhotoFile, setRegistrationPhotoFile] = useState<File | null>(null);
 
   const [editForm, setEditForm] = useState({
     first_name: "",
@@ -542,7 +549,6 @@ export default function App() {
         groupFilter === "All" || player.grade_group === groupFilter;
 
       let matchesAttendanceFilter = true;
-
       switch (attendanceFilter) {
         case "checked-in":
           matchesAttendanceFilter = player.checked_in;
@@ -563,6 +569,21 @@ export default function App() {
       return matchesSearch && matchesGroup && matchesAttendanceFilter;
     });
   }, [players, search, groupFilter, attendanceFilter, latestEvalMap]);
+
+  const doorPlayers = useMemo(() => {
+    const term = doorSearch.toLowerCase();
+    return players
+      .filter((player) => {
+        const text =
+          `${player.first_name ?? ""} ${player.last_name ?? ""} ${player.school ?? ""}`.toLowerCase();
+        return text.includes(term);
+      })
+      .sort((a, b) =>
+        `${a.last_name ?? ""} ${a.first_name ?? ""}`.localeCompare(
+          `${b.last_name ?? ""} ${b.first_name ?? ""}`
+        )
+      );
+  }, [players, doorSearch]);
 
   const rosterGroups = useMemo(() => {
     const groups: Record<TeamOption, Player[]> = {
@@ -585,7 +606,6 @@ export default function App() {
         const aScore = latestEvalMap.get(a.id)?.total_score ?? -1;
         const bScore = latestEvalMap.get(b.id)?.total_score ?? -1;
         if (bScore !== aScore) return bScore - aScore;
-
         return `${a.last_name ?? ""} ${a.first_name ?? ""}`.localeCompare(
           `${b.last_name ?? ""} ${b.first_name ?? ""}`
         );
@@ -606,6 +626,122 @@ export default function App() {
   }, [latestEvaluations]);
 
   const notCheckedInCount = players.length - checkedInCount;
+
+  const teamStats = useMemo<TeamStats[]>(() => {
+    return TEAM_OPTIONS.map((team) => {
+      const teamPlayers = players.filter(
+        (player) => (player.suggested_team ?? "Undecided") === team
+      );
+      const scores = teamPlayers
+        .map((player) => latestEvalMap.get(player.id)?.total_score ?? null)
+        .filter((score): score is number => score != null);
+
+      const averageScore =
+        scores.length > 0
+          ? Number((scores.reduce((sum, score) => sum + score, 0) / scores.length).toFixed(1))
+          : null;
+
+      return {
+        team,
+        count: teamPlayers.length,
+        checkedIn: teamPlayers.filter((player) => player.checked_in).length,
+        evaluated: teamPlayers.filter((player) => latestEvalMap.has(player.id)).length,
+        averageScore,
+      };
+    });
+  }, [players, latestEvalMap]);
+
+  function exportAllPlayersCsv() {
+    const rows: string[][] = [
+      [
+        "Last Name",
+        "First Name",
+        "Grade Group",
+        "Grade",
+        "School",
+        "Checked In",
+        "Suggested Team",
+        "Latest Score",
+        "Evaluated",
+        "Player Phone",
+        "Parent Phone",
+        "Parent Email",
+        "Notes",
+        "Photo URL",
+      ],
+    ];
+
+    const sortedPlayers = [...players].sort((a, b) =>
+      `${a.last_name ?? ""} ${a.first_name ?? ""}`.localeCompare(
+        `${b.last_name ?? ""} ${b.first_name ?? ""}`
+      )
+    );
+
+    sortedPlayers.forEach((player) => {
+      const latest = latestEvalMap.get(player.id);
+      rows.push([
+        player.last_name ?? "",
+        player.first_name ?? "",
+        player.grade_group ?? "",
+        player.grade ?? "",
+        player.school ?? "",
+        player.checked_in ? "Yes" : "No",
+        player.suggested_team ?? "Undecided",
+        latest?.total_score?.toString() ?? "",
+        latest ? "Yes" : "No",
+        player.player_phone ?? "",
+        player.parent_phone ?? "",
+        player.parent_email ?? "",
+        player.notes ?? "",
+        player.photo_url ?? "",
+      ]);
+    });
+
+    downloadCsv("soldiers-players.csv", rows);
+    setStatus("Exported soldiers-players.csv");
+  }
+
+  function exportRosterCsv() {
+    const rows: string[][] = [
+      [
+        "Team",
+        "Last Name",
+        "First Name",
+        "Grade Group",
+        "Grade",
+        "School",
+        "Checked In",
+        "Latest Score",
+        "Evaluator",
+        "Player Phone",
+        "Parent Phone",
+        "Parent Email",
+      ],
+    ];
+
+    TEAM_OPTIONS.forEach((team) => {
+      rosterGroups[team].forEach((player) => {
+        const latest = latestEvalMap.get(player.id);
+        rows.push([
+          team,
+          player.last_name ?? "",
+          player.first_name ?? "",
+          player.grade_group ?? "",
+          player.grade ?? "",
+          player.school ?? "",
+          player.checked_in ? "Yes" : "No",
+          latest?.total_score?.toString() ?? "",
+          latest?.evaluator ?? "",
+          player.player_phone ?? "",
+          player.parent_phone ?? "",
+          player.parent_email ?? "",
+        ]);
+      });
+    });
+
+    downloadCsv("soldiers-rosters.csv", rows);
+    setStatus("Exported soldiers-rosters.csv");
+  }
 
   function openRegistrationModal() {
     setForm({
@@ -740,7 +876,6 @@ export default function App() {
     if (registrationPhotoFile) {
       try {
         const photoUrl = await uploadPlayerPhoto(registrationPhotoFile, data.id);
-
         const { error: photoUpdateError } = await supabase
           .from("players")
           .update({ photo_url: photoUrl })
@@ -769,9 +904,7 @@ export default function App() {
 
     if (!editingPlayerId) return;
 
-    const currentPlayer =
-      players.find((p) => p.id === editingPlayerId) ?? null;
-
+    const currentPlayer = players.find((p) => p.id === editingPlayerId) ?? null;
     let photoUrl = currentPlayer?.photo_url ?? null;
 
     if (editPhotoFile) {
@@ -983,6 +1116,13 @@ export default function App() {
           className={`tab-button ${tab === "attendance" ? "active" : ""}`}
         >
           Attendance
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("door")}
+          className={`tab-button ${tab === "door" ? "active" : ""}`}
+        >
+          Door Mode
         </button>
         <button
           type="button"
@@ -1220,9 +1360,96 @@ export default function App() {
             )}
           </div>
         </div>
+      ) : tab === "door" ? (
+        <div className="door-grid">
+          <div className="card">
+            <div className="card-header-row">
+              <h2>Door Mode</h2>
+              <button
+                type="button"
+                className="primary-button"
+                onClick={openRegistrationModal}
+              >
+                New Registration
+              </button>
+            </div>
+
+            <input
+              className="input door-search"
+              placeholder="Search by player name or school"
+              value={doorSearch}
+              onChange={(e) => setDoorSearch(e.target.value)}
+            />
+
+            <div className="door-list">
+              {doorPlayers.map((player) => (
+                <div key={player.id} className="door-row">
+                  <div className="door-row-main">
+                    <PlayerPhoto
+                      src={player.photo_url}
+                      alt={`${player.first_name ?? ""} ${player.last_name ?? ""}`}
+                    />
+                    <div>
+                      <div className="door-name">
+                        {player.last_name}, {player.first_name}
+                      </div>
+                      <div className="door-meta">
+                        {player.grade_group} • {player.grade} • {player.school}
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    className={`door-checkin-button ${
+                      player.checked_in ? "checked" : ""
+                    }`}
+                    onClick={() => toggleCheckIn(player)}
+                  >
+                    {player.checked_in ? "Checked In" : "Check In"}
+                  </button>
+                </div>
+              ))}
+
+              {doorPlayers.length === 0 && <p>No players found.</p>}
+            </div>
+          </div>
+        </div>
       ) : (
-        <div>
-          <h2 className="roster-title">Rosters</h2>
+        <div className="rosters-page">
+          <div className="rosters-toolbar">
+            <h2 className="roster-title">Rosters & Team Stats</h2>
+            <div className="rosters-toolbar-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={exportAllPlayersCsv}
+              >
+                Export All Players CSV
+              </button>
+              <button
+                type="button"
+                className="primary-button"
+                onClick={exportRosterCsv}
+              >
+                Export Rosters CSV
+              </button>
+            </div>
+          </div>
+
+          <div className="team-stats-grid">
+            {teamStats.map((stat) => (
+              <div key={stat.team} className="team-stat-card">
+                <div className="team-stat-title">{stat.team}</div>
+                <div className="team-stat-line">Players: {stat.count}</div>
+                <div className="team-stat-line">Checked In: {stat.checkedIn}</div>
+                <div className="team-stat-line">Evaluated: {stat.evaluated}</div>
+                <div className="team-stat-line">
+                  Avg Score: {stat.averageScore ?? "-"}
+                </div>
+              </div>
+            ))}
+          </div>
 
           <div className="roster-grid">
             {TEAM_OPTIONS.map((team) => (
@@ -1287,9 +1514,7 @@ export default function App() {
             </div>
 
             <form onSubmit={addPlayer} className="form-stack">
-              <PhotoPicker
-                onFileReady={(file) => setRegistrationPhotoFile(file)}
-              />
+              <PhotoPicker onFileReady={(file) => setRegistrationPhotoFile(file)} />
 
               <input
                 className="input"
