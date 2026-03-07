@@ -421,9 +421,11 @@ export default function App() {
   }
 
   async function toggleCheckIn(player: Player) {
+    const newValue = !player.checked_in;
+
     const { error } = await supabase
       .from("players")
-      .update({ checked_in: !player.checked_in })
+      .update({ checked_in: newValue })
       .eq("id", player.id);
 
     if (error) {
@@ -431,7 +433,13 @@ export default function App() {
       return;
     }
 
-    await refreshAll();
+    setPlayers((prev) =>
+      prev.map((p) =>
+        p.id === player.id ? { ...p, checked_in: newValue } : p
+      )
+    );
+
+    setStatus("Attendance updated.");
   }
 
   async function updateSuggestedTeam(player: Player, team: TeamOption) {
@@ -445,7 +453,13 @@ export default function App() {
       return;
     }
 
-    await refreshAll();
+    setPlayers((prev) =>
+      prev.map((p) =>
+        p.id === player.id ? { ...p, suggested_team: team } : p
+      )
+    );
+
+    setStatus("Team updated.");
   }
 
   async function saveEvaluation(e: FormEvent<HTMLFormElement>) {
