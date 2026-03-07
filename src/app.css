@@ -450,4 +450,68 @@ textarea {
     flex-direction: column;
     align-items: stretch;
   }
+
+  /* Top Navigation */
+
+  .top-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 18px 24px;
+    margin-bottom: 24px;
+    border-radius: 20px;
+
+    background: rgba(10, 18, 45, 0.75);
+    backdrop-filter: blur(12px);
+
+    border: 1px solid rgba(148,163,184,0.15);
+
+    box-shadow:
+      0 10px 30px rgba(0,0,0,0.35),
+      inset 0 1px 0 rgba(255,255,255,0.05);
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .logo-circle {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+
+    background: linear-gradient(
+      135deg,
+      #2563eb,
+      #1d4ed8
+    );
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    font-weight: 800;
+    font-size: 18px;
+
+    color: white;
+
+    box-shadow: 0 6px 14px rgba(0,0,0,0.4);
+  }
+
+  .brand-title {
+    font-size: 22px;
+    font-weight: 800;
+  }
+
+  .brand-subtitle {
+    font-size: 13px;
+    opacity: 0.7;
+  }
+
+  .status-area {
+    display: flex;
+    align-items: center;
+  }
 }

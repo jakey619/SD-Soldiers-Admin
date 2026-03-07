@@ -506,12 +506,21 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell">
-      <div className="app-header">
-        <h1 className="app-title">San Diego Soldiers</h1>
-        <p className="app-subtitle">Tryout Dashboard</p>
+  <div className="app-shell">
+
+    <div className="top-bar">
+      <div className="brand">
+        <div className="logo-circle">SD</div>
+        <div className="brand-text">
+          <div className="brand-title">San Diego Soldiers</div>
+          <div className="brand-subtitle">Tryout Admin Dashboard</div>
+        </div>
+      </div>
+
+      <div className="status-area">
         <div className="app-status">{status}</div>
       </div>
+    </div>
 
       <div className="tab-row">
         <button
