@@ -6,7 +6,11 @@ import {
   type ReactNode,
 } from "react";
 import { supabase } from "./lib/supabase";
+import soldiersLogo from "./assets/soldiers-logo.jpg";
+
 import "./app.css";
+
+
 
 type TeamOption =
   | "15u Salute"
@@ -510,7 +514,8 @@ export default function App() {
 
     <div className="top-bar">
       <div className="brand">
-        <div className="logo-circle">SD</div>
+        <img src={soldiersLogo} alt="San Diego Soldiers logo" className="brand-logo" />
+
         <div className="brand-text">
           <div className="brand-title">San Diego Soldiers</div>
           <div className="brand-subtitle">Tryout Admin Dashboard</div>
