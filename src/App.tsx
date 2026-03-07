@@ -6,7 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { supabase } from "./lib/supabase";
-import soldiersLogo from "./assets/logo.png";
+import soldiersLogo from "./assets/soldiers-logo.png";
 import "./app.css";
 
 type TeamOption =
@@ -455,9 +455,7 @@ export default function App() {
     }
 
     setPlayers((prev) =>
-      prev.map((p) =>
-        p.id === editingPlayerId ? { ...p, ...payload } : p
-      )
+      prev.map((p) => (p.id === editingPlayerId ? { ...p, ...payload } : p))
     );
 
     setEditingPlayerId(null);
@@ -642,171 +640,75 @@ export default function App() {
 
       {tab === "attendance" ? (
         <div className="content-grid">
-          <div>
-            <div className="card">
-              <h2>Onsite Registration</h2>
+          <div className="card">
+            <h2>Onsite Registration</h2>
 
-              <form onSubmit={addPlayer} className="form-stack">
-                <input
-                  className="input"
-                  placeholder="First Name"
-                  value={form.first_name}
-                  onChange={(e) =>
-                    setForm({ ...form, first_name: e.target.value })
-                  }
-                />
-                <input
-                  className="input"
-                  placeholder="Last Name"
-                  value={form.last_name}
-                  onChange={(e) =>
-                    setForm({ ...form, last_name: e.target.value })
-                  }
-                />
-                <input
-                  className="input"
-                  placeholder="Grade"
-                  value={form.grade}
-                  onChange={(e) => setForm({ ...form, grade: e.target.value })}
-                />
-                <input
-                  className="input"
-                  placeholder="School"
-                  value={form.school}
-                  onChange={(e) => setForm({ ...form, school: e.target.value })}
-                />
-                <input
-                  className="input"
-                  type="date"
-                  value={form.birth_date}
-                  onChange={(e) =>
-                    setForm({ ...form, birth_date: e.target.value })
-                  }
-                />
-                <input
-                  className="input"
-                  placeholder="Player Cell"
-                  value={form.player_phone}
-                  onChange={(e) =>
-                    setForm({ ...form, player_phone: e.target.value })
-                  }
-                />
-                <input
-                  className="input"
-                  placeholder="Parent Cell"
-                  value={form.parent_phone}
-                  onChange={(e) =>
-                    setForm({ ...form, parent_phone: e.target.value })
-                  }
-                />
-                <input
-                  className="input"
-                  placeholder="Parent Email"
-                  value={form.parent_email}
-                  onChange={(e) =>
-                    setForm({ ...form, parent_email: e.target.value })
-                  }
-                />
+            <form onSubmit={addPlayer} className="form-stack">
+              <input
+                className="input"
+                placeholder="First Name"
+                value={form.first_name}
+                onChange={(e) =>
+                  setForm({ ...form, first_name: e.target.value })
+                }
+              />
+              <input
+                className="input"
+                placeholder="Last Name"
+                value={form.last_name}
+                onChange={(e) =>
+                  setForm({ ...form, last_name: e.target.value })
+                }
+              />
+              <input
+                className="input"
+                placeholder="Grade"
+                value={form.grade}
+                onChange={(e) => setForm({ ...form, grade: e.target.value })}
+              />
+              <input
+                className="input"
+                placeholder="School"
+                value={form.school}
+                onChange={(e) => setForm({ ...form, school: e.target.value })}
+              />
+              <input
+                className="input"
+                type="date"
+                value={form.birth_date}
+                onChange={(e) =>
+                  setForm({ ...form, birth_date: e.target.value })
+                }
+              />
+              <input
+                className="input"
+                placeholder="Player Cell"
+                value={form.player_phone}
+                onChange={(e) =>
+                  setForm({ ...form, player_phone: e.target.value })
+                }
+              />
+              <input
+                className="input"
+                placeholder="Parent Cell"
+                value={form.parent_phone}
+                onChange={(e) =>
+                  setForm({ ...form, parent_phone: e.target.value })
+                }
+              />
+              <input
+                className="input"
+                placeholder="Parent Email"
+                value={form.parent_email}
+                onChange={(e) =>
+                  setForm({ ...form, parent_email: e.target.value })
+                }
+              />
 
-                <button type="submit" className="primary-button">
-                  Register Player
-                </button>
-              </form>
-            </div>
-
-            {editingPlayerId && (
-              <div className="card edit-card">
-                <h3>Edit Player</h3>
-
-                <form onSubmit={savePlayerEdits} className="form-stack">
-                  <input
-                    className="input"
-                    placeholder="First Name"
-                    value={editForm.first_name}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, first_name: e.target.value })
-                    }
-                  />
-                  <input
-                    className="input"
-                    placeholder="Last Name"
-                    value={editForm.last_name}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, last_name: e.target.value })
-                    }
-                  />
-                  <input
-                    className="input"
-                    placeholder="Grade"
-                    value={editForm.grade}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, grade: e.target.value })
-                    }
-                  />
-                  <input
-                    className="input"
-                    placeholder="School"
-                    value={editForm.school}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, school: e.target.value })
-                    }
-                  />
-                  <input
-                    className="input"
-                    type="date"
-                    value={editForm.birth_date}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, birth_date: e.target.value })
-                    }
-                  />
-                  <input
-                    className="input"
-                    placeholder="Player Cell"
-                    value={editForm.player_phone}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, player_phone: e.target.value })
-                    }
-                  />
-                  <input
-                    className="input"
-                    placeholder="Parent Cell"
-                    value={editForm.parent_phone}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, parent_phone: e.target.value })
-                    }
-                  />
-                  <input
-                    className="input"
-                    placeholder="Parent Email"
-                    value={editForm.parent_email}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, parent_email: e.target.value })
-                    }
-                  />
-                  <textarea
-                    className="textarea"
-                    placeholder="Notes"
-                    value={editForm.notes}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, notes: e.target.value })
-                    }
-                  />
-
-                  <div className="edit-actions">
-                    <button type="submit" className="primary-button">
-                      Save Changes
-                    </button>
-                    <button
-                      type="button"
-                      className="secondary-button"
-                      onClick={cancelEditPlayer}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </form>
-              </div>
-            )}
+              <button type="submit" className="primary-button">
+                Register Player
+              </button>
+            </form>
           </div>
 
           <div className="card">
@@ -1255,6 +1157,111 @@ export default function App() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {editingPlayerId && (
+        <div className="modal-overlay" onClick={cancelEditPlayer}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Edit Player</h3>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={cancelEditPlayer}
+              >
+                ×
+              </button>
+            </div>
+
+            <form onSubmit={savePlayerEdits} className="form-stack">
+              <input
+                className="input"
+                placeholder="First Name"
+                value={editForm.first_name}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, first_name: e.target.value })
+                }
+              />
+              <input
+                className="input"
+                placeholder="Last Name"
+                value={editForm.last_name}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, last_name: e.target.value })
+                }
+              />
+              <input
+                className="input"
+                placeholder="Grade"
+                value={editForm.grade}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, grade: e.target.value })
+                }
+              />
+              <input
+                className="input"
+                placeholder="School"
+                value={editForm.school}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, school: e.target.value })
+                }
+              />
+              <input
+                className="input"
+                type="date"
+                value={editForm.birth_date}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, birth_date: e.target.value })
+                }
+              />
+              <input
+                className="input"
+                placeholder="Player Cell"
+                value={editForm.player_phone}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, player_phone: e.target.value })
+                }
+              />
+              <input
+                className="input"
+                placeholder="Parent Cell"
+                value={editForm.parent_phone}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, parent_phone: e.target.value })
+                }
+              />
+              <input
+                className="input"
+                placeholder="Parent Email"
+                value={editForm.parent_email}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, parent_email: e.target.value })
+                }
+              />
+              <textarea
+                className="textarea"
+                placeholder="Notes"
+                value={editForm.notes}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, notes: e.target.value })
+                }
+              />
+
+              <div className="edit-actions">
+                <button type="submit" className="primary-button">
+                  Save Changes
+                </button>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={cancelEditPlayer}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
