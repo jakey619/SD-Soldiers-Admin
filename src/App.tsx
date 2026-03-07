@@ -2,10 +2,12 @@ import {
   useEffect,
   useMemo,
   useState,
+  type ChangeEvent,
   type FormEvent,
   type ReactNode,
 } from "react";
 import { supabase } from "./lib/supabase";
+import { uploadPlayerPhoto } from "./lib/playerPhotos";
 import soldiersLogo from "./assets/soldiers-logo.png";
 import "./app.css";
 
@@ -17,6 +19,13 @@ type TeamOption =
   | "17u Salute"
   | "17u Honor"
   | "Undecided";
+
+type AttendanceFilter =
+  | "all"
+  | "checked-in"
+  | "not-checked-in"
+  | "evaluated"
+  | "not-evaluated";
 
 type Player = {
   id: string;
@@ -33,6 +42,7 @@ type Player = {
   checked_in: boolean;
   suggested_team: TeamOption | null;
   notes: string | null;
+  photo_url?: string | null;
 };
 
 type LatestEvaluation = {
@@ -98,6 +108,17 @@ const TEAM_OPTIONS: TeamOption[] = [
   "Undecided",
 ];
 
+const ATTENDANCE_FILTER_OPTIONS: {
+  value: AttendanceFilter;
+  label: string;
+}[] = [
+  { value: "all", label: "All" },
+  { value: "checked-in", label: "Checked In" },
+  { value: "not-checked-in", label: "Not Checked In" },
+  { value: "evaluated", label: "Evaluated" },
+  { value: "not-evaluated", label: "Not Evaluated" },
+];
+
 function groupFromGrade(grade: string) {
   const n = parseInt(grade, 10);
   if (!Number.isFinite(n)) return "High School";
@@ -143,6 +164,14 @@ function totalScore(evalForm: EvalForm) {
   );
 }
 
+function getScoreTone(score: number | null | undefined) {
+  if (score == null) return "neutral";
+  if (score >= 55) return "good";
+  if (score >= 45) return "info";
+  if (score >= 35) return "warn";
+  return "neutral";
+}
+
 function ScoreSelect({
   value,
   onChange,
@@ -165,12 +194,59 @@ function ScoreSelect({
   );
 }
 
-function getScoreTone(score: number | null | undefined) {
-  if (score == null) return "neutral";
-  if (score >= 55) return "good";
-  if (score >= 45) return "info";
-  if (score >= 35) return "warn";
-  return "neutral";
+function PhotoInput({
+  onChange,
+  label = "Take/Upload Photo",
+}: {
+  onChange: (file: File | null) => void;
+  label?: string;
+}) {
+  function handleChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null;
+    onChange(file);
+  }
+
+  return (
+    <div className="photo-input-wrap">
+      <label className="field-label">{label}</label>
+      <input
+        className="input"
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={handleChange}
+      />
+    </div>
+  );
+}
+
+function PlayerPhoto({
+  src,
+  alt,
+  large = false,
+}: {
+  src?: string | null;
+  alt: string;
+  large?: boolean;
+}) {
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt={alt}
+        className={large ? "player-photo player-photo-large" : "player-photo"}
+      />
+    );
+  }
+
+  return (
+    <div
+      className={large ? "player-photo player-photo-large empty" : "player-photo empty"}
+      aria-label="No player photo"
+    >
+      No Photo
+    </div>
+  );
 }
 
 export default function App() {
@@ -182,10 +258,15 @@ export default function App() {
   const [status, setStatus] = useState("Loading...");
   const [search, setSearch] = useState("");
   const [groupFilter, setGroupFilter] = useState("All");
-  const [tab, setTab] = useState<"attendance" | "evaluations" | "rosters">(
-    "attendance"
-  );
+  const [attendanceFilter, setAttendanceFilter] =
+    useState<AttendanceFilter>("all");
+  const [tab, setTab] = useState<"attendance" | "rosters">("attendance");
   const [selectedPlayerId, setSelectedPlayerId] = useState<string>("");
+
+  const [isRegistrationOpen, setIsRegistrationOpen] = useState(false);
+  const [isEvaluationOpen, setIsEvaluationOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+
   const [editingEvaluationId, setEditingEvaluationId] = useState<string | null>(
     null
   );
@@ -202,6 +283,9 @@ export default function App() {
     parent_phone: "",
     parent_email: "",
   });
+  const [registrationPhotoFile, setRegistrationPhotoFile] = useState<File | null>(
+    null
+  );
 
   const [editForm, setEditForm] = useState({
     first_name: "",
@@ -214,6 +298,7 @@ export default function App() {
     parent_email: "",
     notes: "",
   });
+  const [editPhotoFile, setEditPhotoFile] = useState<File | null>(null);
 
   const selectedPlayer = players.find((p) => p.id === selectedPlayerId) ?? null;
 
@@ -270,6 +355,137 @@ export default function App() {
     setStatus("Data loaded.");
   }
 
+  useEffect(() => {
+    refreshAll();
+  }, []);
+
+  const latestEvalMap = useMemo(() => {
+    const map = new Map<string, LatestEvaluation>();
+    latestEvaluations.forEach((ev) => map.set(ev.player_id, ev));
+    return map;
+  }, [latestEvaluations]);
+
+  useEffect(() => {
+    if (selectedPlayerId) {
+      loadPlayerEvaluations(selectedPlayerId);
+    } else {
+      setPlayerEvaluations([]);
+    }
+  }, [selectedPlayerId]);
+
+  const filteredPlayers = useMemo(() => {
+    return players.filter((player) => {
+      const latest = latestEvalMap.get(player.id);
+      const isEvaluated = Boolean(latest);
+
+      const text =
+        `${player.first_name ?? ""} ${player.last_name ?? ""} ${player.school ?? ""} ${player.parent_phone ?? ""} ${player.parent_email ?? ""}`.toLowerCase();
+
+      const matchesSearch = text.includes(search.toLowerCase());
+      const matchesGroup =
+        groupFilter === "All" || player.grade_group === groupFilter;
+
+      let matchesAttendanceFilter = true;
+
+      switch (attendanceFilter) {
+        case "checked-in":
+          matchesAttendanceFilter = player.checked_in;
+          break;
+        case "not-checked-in":
+          matchesAttendanceFilter = !player.checked_in;
+          break;
+        case "evaluated":
+          matchesAttendanceFilter = isEvaluated;
+          break;
+        case "not-evaluated":
+          matchesAttendanceFilter = !isEvaluated;
+          break;
+        default:
+          matchesAttendanceFilter = true;
+      }
+
+      return matchesSearch && matchesGroup && matchesAttendanceFilter;
+    });
+  }, [players, search, groupFilter, attendanceFilter, latestEvalMap]);
+
+  const rosterGroups = useMemo(() => {
+    const groups: Record<TeamOption, Player[]> = {
+      "15u Salute": [],
+      "15u Honor": [],
+      "16u Salute": [],
+      "16u Honor": [],
+      "17u Salute": [],
+      "17u Honor": [],
+      Undecided: [],
+    };
+
+    players.forEach((player) => {
+      const team = player.suggested_team ?? "Undecided";
+      groups[team].push(player);
+    });
+
+    Object.keys(groups).forEach((key) => {
+      groups[key as TeamOption].sort((a, b) => {
+        const aScore = latestEvalMap.get(a.id)?.total_score ?? -1;
+        const bScore = latestEvalMap.get(b.id)?.total_score ?? -1;
+        if (bScore !== aScore) return bScore - aScore;
+
+        return `${a.last_name ?? ""} ${a.first_name ?? ""}`.localeCompare(
+          `${b.last_name ?? ""} ${b.first_name ?? ""}`
+        );
+      });
+    });
+
+    return groups;
+  }, [players, latestEvalMap]);
+
+  const checkedInCount = useMemo(
+    () => players.filter((p) => p.checked_in).length,
+    [players]
+  );
+
+  const evaluatedCount = useMemo(() => {
+    const ids = new Set(latestEvaluations.map((ev) => ev.player_id));
+    return ids.size;
+  }, [latestEvaluations]);
+
+  const notCheckedInCount = players.length - checkedInCount;
+
+  function openRegistrationModal() {
+    setForm({
+      first_name: "",
+      last_name: "",
+      grade: "",
+      school: "",
+      birth_date: "",
+      player_phone: "",
+      parent_phone: "",
+      parent_email: "",
+    });
+    setRegistrationPhotoFile(null);
+    setIsRegistrationOpen(true);
+  }
+
+  function closeRegistrationModal() {
+    setIsRegistrationOpen(false);
+  }
+
+  function openEvaluationModal(player: Player) {
+    setSelectedPlayerId(player.id);
+    setEditingEvaluationId(null);
+    setEvalForm({
+      ...initialEvalForm(),
+      suggested_team: player.suggested_team ?? "Undecided",
+    });
+    setIsEvaluationOpen(true);
+  }
+
+  function closeEvaluationModal() {
+    setIsEvaluationOpen(false);
+    setEditingEvaluationId(null);
+    setEvalForm(initialEvalForm());
+  }
+
   function loadEvaluationIntoForm(evaluation: Evaluation) {
     setEditingEvaluationId(evaluation.id);
     setEvalForm({
@@ -290,7 +506,7 @@ export default function App() {
       general_notes: evaluation.general_notes ?? "",
       suggested_team: evaluation.suggested_team ?? "Undecided",
     });
-
+    setIsEvaluationOpen(true);
     setStatus(
       `Loaded evaluation${
         evaluation.evaluator ? ` by ${evaluation.evaluator}` : ""
@@ -300,7 +516,10 @@ export default function App() {
 
   function startNewEvaluation() {
     setEditingEvaluationId(null);
-    setEvalForm(initialEvalForm());
+    setEvalForm({
+      ...initialEvalForm(),
+      suggested_team: selectedPlayer?.suggested_team ?? "Undecided",
+    });
     setStatus(
       selectedPlayer
         ? `Starting new evaluation for ${selectedPlayer.first_name} ${selectedPlayer.last_name}.`
@@ -308,7 +527,7 @@ export default function App() {
     );
   }
 
-  function startEditPlayer(player: Player) {
+  function openEditModal(player: Player) {
     setEditingPlayerId(player.id);
     setEditForm({
       first_name: player.first_name ?? "",
@@ -321,121 +540,66 @@ export default function App() {
       parent_email: player.parent_email ?? "",
       notes: player.notes ?? "",
     });
+    setEditPhotoFile(null);
+    setIsEditOpen(true);
     setStatus(`Editing ${player.first_name} ${player.last_name}.`);
   }
 
-  function cancelEditPlayer() {
+  function closeEditModal() {
+    setIsEditOpen(false);
     setEditingPlayerId(null);
+    setEditPhotoFile(null);
     setStatus("Edit cancelled.");
   }
-
-  useEffect(() => {
-    refreshAll();
-  }, []);
-
-  useEffect(() => {
-    if (selectedPlayerId) {
-      setEvalForm(initialEvalForm());
-      setEditingEvaluationId(null);
-      loadPlayerEvaluations(selectedPlayerId);
-    } else {
-      setPlayerEvaluations([]);
-    }
-  }, [selectedPlayerId]);
-
-  const filteredPlayers = useMemo(() => {
-    return players.filter((player) => {
-      const text =
-        `${player.first_name ?? ""} ${player.last_name ?? ""} ${player.school ?? ""} ${player.parent_phone ?? ""} ${player.parent_email ?? ""}`.toLowerCase();
-      const matchesSearch = text.includes(search.toLowerCase());
-      const matchesGroup =
-        groupFilter === "All" || player.grade_group === groupFilter;
-      return matchesSearch && matchesGroup;
-    });
-  }, [players, search, groupFilter]);
-
-  const latestEvalMap = useMemo(() => {
-    const map = new Map<string, LatestEvaluation>();
-    latestEvaluations.forEach((ev) => map.set(ev.player_id, ev));
-    return map;
-  }, [latestEvaluations]);
-
-  const rosterGroups = useMemo(() => {
-    const groups: Record<TeamOption, Player[]> = {
-      "15u Salute": [],
-      "15u Honor": [],
-      "16u Salute": [],
-      "16u Honor": [],
-      "17u Salute": [],
-      "17u Honor": [],
-      Undecided: [],
-    };
-
-    players.forEach((player) => {
-      const team = player.suggested_team ?? "Undecided";
-      groups[team].push(player);
-    });
-
-    Object.keys(groups).forEach((key) => {
-      groups[key as TeamOption].sort((a, b) =>
-        `${a.last_name ?? ""} ${a.first_name ?? ""}`.localeCompare(
-          `${b.last_name ?? ""} ${b.first_name ?? ""}`
-        )
-      );
-    });
-
-    return groups;
-  }, [players]);
-
-  const checkedInCount = useMemo(
-    () => players.filter((p) => p.checked_in).length,
-    [players]
-  );
-
-  const evaluatedCount = useMemo(() => {
-    const ids = new Set(latestEvaluations.map((ev) => ev.player_id));
-    return ids.size;
-  }, [latestEvaluations]);
-
-  const notCheckedInCount = players.length - checkedInCount;
 
   async function addPlayer(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
-    const { error } = await supabase.from("players").insert([
-      {
-        first_name: form.first_name,
-        last_name: form.last_name,
-        grade: form.grade,
-        grade_group: groupFromGrade(form.grade),
-        school: form.school || null,
-        birth_date: form.birth_date || null,
-        player_phone: form.player_phone || null,
-        parent_phone: form.parent_phone || null,
-        parent_email: form.parent_email || null,
-        checked_in: true,
-        suggested_team: "Undecided",
-        notes: "Onsite registration",
-      },
-    ]);
+    const { data, error } = await supabase
+      .from("players")
+      .insert([
+        {
+          first_name: form.first_name,
+          last_name: form.last_name,
+          grade: form.grade,
+          grade_group: groupFromGrade(form.grade),
+          school: form.school || null,
+          birth_date: form.birth_date || null,
+          player_phone: form.player_phone || null,
+          parent_phone: form.parent_phone || null,
+          parent_email: form.parent_email || null,
+          checked_in: true,
+          suggested_team: "Undecided",
+          notes: "Onsite registration",
+        },
+      ])
+      .select()
+      .single();
 
-    if (error) {
-      setStatus(`Insert error: ${error.message}`);
+    if (error || !data) {
+      setStatus(`Insert error: ${error?.message ?? "Unable to create player."}`);
       return;
     }
 
-    setForm({
-      first_name: "",
-      last_name: "",
-      grade: "",
-      school: "",
-      birth_date: "",
-      player_phone: "",
-      parent_phone: "",
-      parent_email: "",
-    });
+    let photoUrl: string | null = null;
 
+    if (registrationPhotoFile) {
+      try {
+        photoUrl = await uploadPlayerPhoto(registrationPhotoFile, data.id);
+        await supabase
+          .from("players")
+          .update({ photo_url: photoUrl })
+          .eq("id", data.id);
+      } catch (photoError) {
+        const message =
+          photoError instanceof Error ? photoError.message : "Photo upload failed.";
+        setStatus(`Player created, but photo upload failed: ${message}`);
+      }
+    }
+
+    closeRegistrationModal();
     await refreshAll();
+    setSelectedPlayerId(data.id);
     setStatus("Player registered successfully.");
   }
 
@@ -443,6 +607,19 @@ export default function App() {
     e.preventDefault();
 
     if (!editingPlayerId) return;
+
+    let photoUrl = selectedPlayer?.photo_url ?? null;
+
+    if (editPhotoFile) {
+      try {
+        photoUrl = await uploadPlayerPhoto(editPhotoFile, editingPlayerId);
+      } catch (photoError) {
+        const message =
+          photoError instanceof Error ? photoError.message : "Photo upload failed.";
+        setStatus(`Edit error: ${message}`);
+        return;
+      }
+    }
 
     const payload = {
       first_name: editForm.first_name,
@@ -455,6 +632,7 @@ export default function App() {
       parent_phone: editForm.parent_phone || null,
       parent_email: editForm.parent_email || null,
       notes: editForm.notes || null,
+      photo_url: photoUrl,
     };
 
     const { error } = await supabase
@@ -471,7 +649,9 @@ export default function App() {
       prev.map((p) => (p.id === editingPlayerId ? { ...p, ...payload } : p))
     );
 
+    setIsEditOpen(false);
     setEditingPlayerId(null);
+    setEditPhotoFile(null);
     setStatus("Player info updated.");
   }
 
@@ -584,6 +764,7 @@ export default function App() {
 
     setEvalForm(initialEvalForm());
     setEditingEvaluationId(null);
+    setIsEvaluationOpen(false);
 
     setStatus(
       isEditing
@@ -641,13 +822,6 @@ export default function App() {
         </button>
         <button
           type="button"
-          onClick={() => setTab("evaluations")}
-          className={`tab-button ${tab === "evaluations" ? "active" : ""}`}
-        >
-          Evaluations
-        </button>
-        <button
-          type="button"
           onClick={() => setTab("rosters")}
           className={`tab-button ${tab === "rosters" ? "active" : ""}`}
         >
@@ -656,11 +830,304 @@ export default function App() {
       </div>
 
       {tab === "attendance" ? (
-        <div className="content-grid">
+        <div className="attendance-grid">
           <div className="card">
-            <h2>Onsite Registration</h2>
+            <div className="card-header-row">
+              <h2>Check-In</h2>
+              <button
+                type="button"
+                className="primary-button"
+                onClick={openRegistrationModal}
+              >
+                New Registration
+              </button>
+            </div>
+
+            <div className="toolbar-row">
+              <input
+                className="input"
+                placeholder="Search player, school, phone, email"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+
+              <select
+                className="select group-select"
+                value={groupFilter}
+                onChange={(e) => setGroupFilter(e.target.value)}
+              >
+                <option value="All">All</option>
+                <option value="High School">High School</option>
+                <option value="Middle School">Middle School</option>
+              </select>
+            </div>
+
+            <div className="filter-chip-row">
+              {ATTENDANCE_FILTER_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={`filter-chip ${
+                    attendanceFilter === option.value ? "active" : ""
+                  }`}
+                  onClick={() => setAttendanceFilter(option.value)}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="checkin-list">
+              {filteredPlayers.map((player) => {
+                const latest = latestEvalMap.get(player.id);
+                const isSelected = selectedPlayerId === player.id;
+
+                return (
+                  <button
+                    key={player.id}
+                    type="button"
+                    className={`checkin-row ${isSelected ? "active" : ""}`}
+                    onClick={() => setSelectedPlayerId(player.id)}
+                  >
+                    <PlayerPhoto
+                      src={player.photo_url}
+                      alt={`${player.first_name ?? ""} ${player.last_name ?? ""}`}
+                    />
+                    <div className="checkin-row-main">
+                      <div className="checkin-row-name">
+                        {player.last_name}, {player.first_name}
+                      </div>
+                      <div className="checkin-row-meta">
+                        {player.grade_group} • {player.grade} • {player.school}
+                      </div>
+                      <div className="badge-row">
+                        <span
+                          className={`badge ${
+                            player.checked_in ? "badge-good" : "badge-neutral"
+                          }`}
+                        >
+                          {player.checked_in ? "Checked In" : "Not Checked In"}
+                        </span>
+                        <span
+                          className={`badge ${
+                            latest ? "badge-info" : "badge-neutral"
+                          }`}
+                        >
+                          {latest ? "Evaluated" : "Not Evaluated"}
+                        </span>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+
+              {filteredPlayers.length === 0 && <p>No players found.</p>}
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="card-header-row">
+              <h2>Selected Player</h2>
+              {selectedPlayer && (
+                <div className="selected-actions">
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => openEditModal(selectedPlayer)}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className="primary-button"
+                    onClick={() => openEvaluationModal(selectedPlayer)}
+                  >
+                    Evaluate
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {selectedPlayer ? (
+              <div className="selected-player-panel">
+                <div className="selected-player-top">
+                  <PlayerPhoto
+                    src={selectedPlayer.photo_url}
+                    alt={`${selectedPlayer.first_name ?? ""} ${selectedPlayer.last_name ?? ""}`}
+                    large
+                  />
+
+                  <div className="selected-player-info">
+                    <div className="player-name">
+                      {selectedPlayer.last_name}, {selectedPlayer.first_name}
+                    </div>
+                    <div className="player-meta">
+                      {selectedPlayer.grade_group} • {selectedPlayer.grade}
+                    </div>
+                    <div className="player-meta">{selectedPlayer.school}</div>
+
+                    <div className="badge-row">
+                      <span
+                        className={`badge ${
+                          selectedPlayer.checked_in
+                            ? "badge-good"
+                            : "badge-neutral"
+                        }`}
+                      >
+                        {selectedPlayer.checked_in
+                          ? "Checked In"
+                          : "Not Checked In"}
+                      </span>
+
+                      <span className="badge badge-team">
+                        {selectedPlayer.suggested_team ?? "Undecided"}
+                      </span>
+
+                      <span
+                        className={`badge ${
+                          latestEvalMap.get(selectedPlayer.id)
+                            ? "badge-info"
+                            : "badge-neutral"
+                        }`}
+                      >
+                        {latestEvalMap.get(selectedPlayer.id)
+                          ? "Evaluated"
+                          : "Not Evaluated"}
+                      </span>
+                    </div>
+
+                    <div className="score-line">
+                      Latest Score:{" "}
+                      <span
+                        className={`score-pill score-${getScoreTone(
+                          latestEvalMap.get(selectedPlayer.id)?.total_score
+                        )}`}
+                      >
+                        {latestEvalMap.get(selectedPlayer.id)?.total_score ?? "-"} / 65
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="selected-player-details">
+                  <div className="detail-line">
+                    <strong>Player Cell:</strong> {selectedPlayer.player_phone || "-"}
+                  </div>
+                  <div className="detail-line">
+                    <strong>Parent Cell:</strong> {selectedPlayer.parent_phone || "-"}
+                  </div>
+                  <div className="detail-line">
+                    <strong>Parent Email:</strong> {selectedPlayer.parent_email || "-"}
+                  </div>
+                  <div className="detail-line">
+                    <strong>Notes:</strong> {selectedPlayer.notes || "-"}
+                  </div>
+                </div>
+
+                <div className="selected-player-buttons">
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => toggleCheckIn(selectedPlayer)}
+                  >
+                    {selectedPlayer.checked_in ? "Mark Absent" : "Check In"}
+                  </button>
+
+                  <select
+                    className="select"
+                    value={selectedPlayer.suggested_team ?? "Undecided"}
+                    onChange={(e) =>
+                      updateSuggestedTeam(
+                        selectedPlayer,
+                        e.target.value as TeamOption
+                      )
+                    }
+                  >
+                    {TEAM_OPTIONS.map((team) => (
+                      <option key={team} value={team}>
+                        {team}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            ) : (
+              <p>Select a player from the check-in list.</p>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div>
+          <h2 className="roster-title">Rosters</h2>
+
+          <div className="roster-grid">
+            {TEAM_OPTIONS.map((team) => (
+              <div key={team} className="card">
+                <div className="roster-team-title">{team}</div>
+                <div className="roster-count">
+                  Count: {rosterGroups[team].length}
+                </div>
+
+                <div className="roster-list">
+                  {rosterGroups[team].length === 0 ? (
+                    <div className="empty-text">No players assigned.</div>
+                  ) : (
+                    rosterGroups[team].map((player) => {
+                      const latest = latestEvalMap.get(player.id);
+                      return (
+                        <div key={player.id} className="roster-player-card">
+                          <div className="roster-player-top">
+                            <PlayerPhoto
+                              src={player.photo_url}
+                              alt={`${player.first_name ?? ""} ${player.last_name ?? ""}`}
+                            />
+                            <div>
+                              <div className="roster-player-name">
+                                {player.last_name}, {player.first_name}
+                              </div>
+                              <div>
+                                {player.grade_group} • {player.grade}
+                              </div>
+                              <div>{player.school}</div>
+                            </div>
+                          </div>
+                          <div className="roster-player-meta">
+                            Latest Eval Score: {latest?.total_score ?? "-"} / 65
+                          </div>
+                          <div className="roster-player-meta">
+                            Checked In: {player.checked_in ? "Yes" : "No"}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {isRegistrationOpen && (
+        <div className="modal-overlay" onClick={closeRegistrationModal}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>New Registration</h3>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={closeRegistrationModal}
+              >
+                ×
+              </button>
+            </div>
 
             <form onSubmit={addPlayer} className="form-stack">
+              <PhotoInput
+                label="Player Photo"
+                onChange={(file) => setRegistrationPhotoFile(file)}
+              />
+
               <input
                 className="input"
                 placeholder="First Name"
@@ -722,221 +1189,201 @@ export default function App() {
                 }
               />
 
-              <button type="submit" className="primary-button">
-                Register Player
-              </button>
-            </form>
-          </div>
-
-          <div className="card">
-            <h2>Players</h2>
-
-            <div className="toolbar-row">
-              <input
-                className="input"
-                placeholder="Search player, school, phone, email"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-
-              <select
-                className="select group-select"
-                value={groupFilter}
-                onChange={(e) => setGroupFilter(e.target.value)}
-              >
-                <option value="All">All</option>
-                <option value="High School">High School</option>
-                <option value="Middle School">Middle School</option>
-              </select>
-            </div>
-
-            <div className="player-list">
-              {filteredPlayers.map((player) => {
-                const latest = latestEvalMap.get(player.id);
-                const hasEval = Boolean(latest);
-                const scoreTone = getScoreTone(latest?.total_score);
-
-                return (
-                  <div key={player.id} className="player-card">
-                    <div className="player-card-header">
-                      <div className="player-main">
-                        <div className="player-name">
-                          {player.last_name}, {player.first_name}
-                        </div>
-                        <div className="player-meta">
-                          {player.grade_group} • {player.grade}
-                        </div>
-                        <div className="player-meta">{player.school}</div>
-
-                        <div className="badge-row">
-                          <span
-                            className={`badge ${
-                              player.checked_in ? "badge-good" : "badge-neutral"
-                            }`}
-                          >
-                            {player.checked_in ? "Checked In" : "Not Checked In"}
-                          </span>
-
-                          <span
-                            className={`badge ${
-                              hasEval ? "badge-info" : "badge-neutral"
-                            }`}
-                          >
-                            {hasEval ? "Evaluated" : "Not Evaluated"}
-                          </span>
-
-                          <span className="badge badge-team">
-                            {player.suggested_team ?? "Undecided"}
-                          </span>
-                        </div>
-
-                        <div className="score-line">
-                          Latest Score:{" "}
-                          <span className={`score-pill score-${scoreTone}`}>
-                            {latest?.total_score ?? "-"} / 65
-                          </span>
-                        </div>
-
-                        <div className="player-contact">
-                          Player: {player.player_phone || "-"}
-                        </div>
-                        <div className="player-contact">
-                          Parent: {player.parent_phone || "-"}
-                        </div>
-                        <div className="player-contact">
-                          Email: {player.parent_email || "-"}
-                        </div>
-                      </div>
-
-                      <div className="player-actions">
-                        <button
-                          type="button"
-                          onClick={() => toggleCheckIn(player)}
-                          className="secondary-button"
-                        >
-                          {player.checked_in ? "Checked In" : "Mark Present"}
-                        </button>
-
-                        <select
-                          className="select"
-                          value={player.suggested_team ?? "Undecided"}
-                          onChange={(e) =>
-                            updateSuggestedTeam(
-                              player,
-                              e.target.value as TeamOption
-                            )
-                          }
-                        >
-                          {TEAM_OPTIONS.map((team) => (
-                            <option key={team} value={team}>
-                              {team}
-                            </option>
-                          ))}
-                        </select>
-
-                        <button
-                          type="button"
-                          className="secondary-button"
-                          onClick={() => startEditPlayer(player)}
-                        >
-                          Edit
-                        </button>
-
-                        <button
-                          type="button"
-                          className="secondary-button"
-                          onClick={() => {
-                            setSelectedPlayerId(player.id);
-                            setTab("evaluations");
-                          }}
-                        >
-                          Evaluate
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-
-              {filteredPlayers.length === 0 && <p>No players found.</p>}
-            </div>
-          </div>
-        </div>
-      ) : tab === "evaluations" ? (
-        <div className="evaluation-grid">
-          <div>
-            <div className="card">
-              <h2>Select Player</h2>
-
-              <div className="player-list">
-                {players.map((player) => (
-                  <button
-                    key={player.id}
-                    type="button"
-                    onClick={() => setSelectedPlayerId(player.id)}
-                    className={`player-select-button ${
-                      selectedPlayerId === player.id ? "active" : ""
-                    }`}
-                  >
-                    <div className="player-select-name">
-                      {player.last_name}, {player.first_name}
-                    </div>
-                    <div>
-                      {player.grade_group} • {player.grade}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="card history-card">
-              <div className="history-header">
-                <h3>Evaluation History</h3>
+              <div className="edit-actions">
+                <button type="submit" className="primary-button">
+                  Register Player
+                </button>
                 <button
                   type="button"
-                  onClick={startNewEvaluation}
                   className="secondary-button"
+                  onClick={closeRegistrationModal}
                 >
-                  New Evaluation
+                  Cancel
                 </button>
               </div>
-
-              <div className="history-list">
-                {playerEvaluations.length === 0 ? (
-                  <div className="empty-text">No evaluations yet.</div>
-                ) : (
-                  playerEvaluations.map((evaluation) => (
-                    <button
-                      key={evaluation.id}
-                      type="button"
-                      onClick={() => loadEvaluationIntoForm(evaluation)}
-                      className={`history-button ${
-                        editingEvaluationId === evaluation.id ? "active" : ""
-                      }`}
-                    >
-                      <div>
-                        Evaluator: {evaluation.evaluator || "Unknown"}
-                      </div>
-                      <div>Score: {evaluation.total_score ?? "-"} / 65</div>
-                      <div>
-                        Team: {evaluation.suggested_team ?? "Undecided"}
-                      </div>
-                    </button>
-                  ))
-                )}
-              </div>
-            </div>
+            </form>
           </div>
+        </div>
+      )}
 
-          <div className="card">
-            <h2>
-              Evaluation{" "}
-              {selectedPlayer
-                ? `- ${selectedPlayer.first_name} ${selectedPlayer.last_name}`
-                : ""}
-            </h2>
+      {isEditOpen && editingPlayerId && (
+        <div className="modal-overlay" onClick={closeEditModal}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Edit Player</h3>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={closeEditModal}
+              >
+                ×
+              </button>
+            </div>
 
-            {selectedPlayer ? (
+            <form onSubmit={savePlayerEdits} className="form-stack">
+              <PhotoInput
+                label="Update Player Photo"
+                onChange={(file) => setEditPhotoFile(file)}
+              />
+
+              {selectedPlayer?.photo_url && (
+                <div className="existing-photo-wrap">
+                  <PlayerPhoto
+                    src={selectedPlayer.photo_url}
+                    alt={`${selectedPlayer.first_name ?? ""} ${selectedPlayer.last_name ?? ""}`}
+                    large
+                  />
+                </div>
+              )}
+
+              <input
+                className="input"
+                placeholder="First Name"
+                value={editForm.first_name}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, first_name: e.target.value })
+                }
+              />
+              <input
+                className="input"
+                placeholder="Last Name"
+                value={editForm.last_name}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, last_name: e.target.value })
+                }
+              />
+              <input
+                className="input"
+                placeholder="Grade"
+                value={editForm.grade}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, grade: e.target.value })
+                }
+              />
+              <input
+                className="input"
+                placeholder="School"
+                value={editForm.school}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, school: e.target.value })
+                }
+              />
+              <input
+                className="input"
+                type="date"
+                value={editForm.birth_date}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, birth_date: e.target.value })
+                }
+              />
+              <input
+                className="input"
+                placeholder="Player Cell"
+                value={editForm.player_phone}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, player_phone: e.target.value })
+                }
+              />
+              <input
+                className="input"
+                placeholder="Parent Cell"
+                value={editForm.parent_phone}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, parent_phone: e.target.value })
+                }
+              />
+              <input
+                className="input"
+                placeholder="Parent Email"
+                value={editForm.parent_email}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, parent_email: e.target.value })
+                }
+              />
+              <textarea
+                className="textarea"
+                placeholder="Notes"
+                value={editForm.notes}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, notes: e.target.value })
+                }
+              />
+
+              <div className="edit-actions">
+                <button type="submit" className="primary-button">
+                  Save Changes
+                </button>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={closeEditModal}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {isEvaluationOpen && selectedPlayer && (
+        <div className="modal-overlay" onClick={closeEvaluationModal}>
+          <div
+            className="modal-card modal-card-wide"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-header">
+              <h3>
+                Evaluation - {selectedPlayer.first_name} {selectedPlayer.last_name}
+              </h3>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={closeEvaluationModal}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="evaluation-modal-grid">
+              <div className="history-panel">
+                <div className="history-header">
+                  <h3>Evaluation History</h3>
+                  <button
+                    type="button"
+                    onClick={startNewEvaluation}
+                    className="secondary-button"
+                  >
+                    New Evaluation
+                  </button>
+                </div>
+
+                <div className="history-list">
+                  {playerEvaluations.length === 0 ? (
+                    <div className="empty-text">No evaluations yet.</div>
+                  ) : (
+                    playerEvaluations.map((evaluation) => (
+                      <button
+                        key={evaluation.id}
+                        type="button"
+                        onClick={() => loadEvaluationIntoForm(evaluation)}
+                        className={`history-button ${
+                          editingEvaluationId === evaluation.id ? "active" : ""
+                        }`}
+                      >
+                        <div>
+                          Evaluator: {evaluation.evaluator || "Unknown"}
+                        </div>
+                        <div>Score: {evaluation.total_score ?? "-"} / 65</div>
+                        <div>
+                          Team: {evaluation.suggested_team ?? "Undecided"}
+                        </div>
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+
               <form onSubmit={saveEvaluation} className="form-stack">
                 <div className="card sub-card">
                   <label className="field-label">Evaluator</label>
@@ -1161,160 +1608,20 @@ export default function App() {
                     : "New Evaluation"}
                 </div>
 
-                <button type="submit" className="primary-button">
-                  Save Evaluation
-                </button>
+                <div className="edit-actions">
+                  <button type="submit" className="primary-button">
+                    Save Evaluation
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={closeEvaluationModal}
+                  >
+                    Cancel
+                  </button>
+                </div>
               </form>
-            ) : (
-              <p>Select a player first.</p>
-            )}
-          </div>
-        </div>
-      ) : (
-        <div>
-          <h2 className="roster-title">Rosters</h2>
-
-          <div className="roster-grid">
-            {TEAM_OPTIONS.map((team) => (
-              <div key={team} className="card">
-                <div className="roster-team-title">{team}</div>
-                <div className="roster-count">
-                  Count: {rosterGroups[team].length}
-                </div>
-
-                <div className="roster-list">
-                  {rosterGroups[team].length === 0 ? (
-                    <div className="empty-text">No players assigned.</div>
-                  ) : (
-                    rosterGroups[team].map((player) => {
-                      const latest = latestEvalMap.get(player.id);
-                      return (
-                        <div key={player.id} className="roster-player-card">
-                          <div className="roster-player-name">
-                            {player.last_name}, {player.first_name}
-                          </div>
-                          <div>
-                            {player.grade_group} • {player.grade}
-                          </div>
-                          <div>{player.school}</div>
-                          <div className="roster-player-meta">
-                            Latest Eval Score: {latest?.total_score ?? "-"} / 65
-                          </div>
-                          <div className="roster-player-meta">
-                            Checked In: {player.checked_in ? "Yes" : "No"}
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {editingPlayerId && (
-        <div className="modal-overlay" onClick={cancelEditPlayer}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Edit Player</h3>
-              <button
-                type="button"
-                className="modal-close"
-                onClick={cancelEditPlayer}
-              >
-                ×
-              </button>
             </div>
-
-            <form onSubmit={savePlayerEdits} className="form-stack">
-              <input
-                className="input"
-                placeholder="First Name"
-                value={editForm.first_name}
-                onChange={(e) =>
-                  setEditForm({ ...editForm, first_name: e.target.value })
-                }
-              />
-              <input
-                className="input"
-                placeholder="Last Name"
-                value={editForm.last_name}
-                onChange={(e) =>
-                  setEditForm({ ...editForm, last_name: e.target.value })
-                }
-              />
-              <input
-                className="input"
-                placeholder="Grade"
-                value={editForm.grade}
-                onChange={(e) =>
-                  setEditForm({ ...editForm, grade: e.target.value })
-                }
-              />
-              <input
-                className="input"
-                placeholder="School"
-                value={editForm.school}
-                onChange={(e) =>
-                  setEditForm({ ...editForm, school: e.target.value })
-                }
-              />
-              <input
-                className="input"
-                type="date"
-                value={editForm.birth_date}
-                onChange={(e) =>
-                  setEditForm({ ...editForm, birth_date: e.target.value })
-                }
-              />
-              <input
-                className="input"
-                placeholder="Player Cell"
-                value={editForm.player_phone}
-                onChange={(e) =>
-                  setEditForm({ ...editForm, player_phone: e.target.value })
-                }
-              />
-              <input
-                className="input"
-                placeholder="Parent Cell"
-                value={editForm.parent_phone}
-                onChange={(e) =>
-                  setEditForm({ ...editForm, parent_phone: e.target.value })
-                }
-              />
-              <input
-                className="input"
-                placeholder="Parent Email"
-                value={editForm.parent_email}
-                onChange={(e) =>
-                  setEditForm({ ...editForm, parent_email: e.target.value })
-                }
-              />
-              <textarea
-                className="textarea"
-                placeholder="Notes"
-                value={editForm.notes}
-                onChange={(e) =>
-                  setEditForm({ ...editForm, notes: e.target.value })
-                }
-              />
-
-              <div className="edit-actions">
-                <button type="submit" className="primary-button">
-                  Save Changes
-                </button>
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={cancelEditPlayer}
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}
