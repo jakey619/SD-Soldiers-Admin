@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { supabase } from "./lib/supabase";
 
 type TeamOption =
@@ -159,16 +166,22 @@ function ScoreSelect({
 
 export default function App() {
   const [players, setPlayers] = useState<Player[]>([]);
-  const [latestEvaluations, setLatestEvaluations] = useState<LatestEvaluation[]>([]);
+  const [latestEvaluations, setLatestEvaluations] = useState<
+    LatestEvaluation[]
+  >([]);
+  const [playerEvaluations, setPlayerEvaluations] = useState<Evaluation[]>([]);
   const [status, setStatus] = useState("Loading...");
   const [search, setSearch] = useState("");
   const [groupFilter, setGroupFilter] = useState("All");
-  const [tab, setTab] = useState<"attendance" | "evaluations" | "rosters">("attendance");
+  const [tab, setTab] = useState<"attendance" | "evaluations" | "rosters">(
+    "attendance"
+  );
   const [selectedPlayerId, setSelectedPlayerId] = useState<string>("");
+  const [editingEvaluationId, setEditingEvaluationId] = useState<string | null>(
+    null
+  );
   const [evalForm, setEvalForm] = useState<EvalForm>(initialEvalForm());
-  const [playerEvaluations, setPlayerEvaluations] = useState<Evaluation[]>([]);
-  const [editingEvaluationId, setEditingEvaluationId] = useState<string | null>(null);
-  
+
   const [form, setForm] = useState({
     first_name: "",
     last_name: "",
@@ -180,20 +193,7 @@ export default function App() {
     parent_email: "",
   });
 
-  async function loadPlayerEvaluations(playerId: string) {
-  const { data, error } = await supabase
-    .from("evaluations")
-    .select("*")
-    .eq("player_id", playerId)
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    setStatus(`Evaluation history error: ${error.message}`);
-    return;
-  }
-
-  setPlayerEvaluations((data ?? []) as Evaluation[]);
-}
+  const selectedPlayer = players.find((p) => p.id === selectedPlayerId) ?? null;
 
   async function loadPlayers() {
     const { data, error } = await supabase
@@ -202,7 +202,7 @@ export default function App() {
       .order("last_name", { ascending: true });
 
     if (error) {
-      setStatus(`Error: ${error.message}`);
+      setStatus(`Players load error: ${error.message}`);
       return;
     }
 
@@ -220,11 +220,26 @@ export default function App() {
       .select("*");
 
     if (error) {
-      setStatus(`Latest eval error: ${error.message}`);
+      setStatus(`Latest evaluation load error: ${error.message}`);
       return;
     }
 
     setLatestEvaluations((data ?? []) as LatestEvaluation[]);
+  }
+
+  async function loadPlayerEvaluations(playerId: string) {
+    const { data, error } = await supabase
+      .from("evaluations")
+      .select("*")
+      .eq("player_id", playerId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      setStatus(`Evaluation history error: ${error.message}`);
+      return;
+    }
+
+    setPlayerEvaluations((data ?? []) as Evaluation[]);
   }
 
   async function refreshAll() {
@@ -232,116 +247,49 @@ export default function App() {
     await loadLatestEvaluations();
     setStatus("Data loaded.");
   }
- 
+
   function loadEvaluationIntoForm(evaluation: Evaluation) {
     setEditingEvaluationId(evaluation.id);
 
     setEvalForm({
-    evaluator: evaluation.evaluator ?? "",
-    speed_quickness: evaluation.speed_quickness ?? 3,
-    strength: evaluation.strength ?? 3,
-    endurance: evaluation.endurance ?? 3,
-    ball_handling: evaluation.ball_handling ?? 3,
-    shooting_mechanics: evaluation.shooting_mechanics ?? 3,
-    shooting_consistency: evaluation.shooting_consistency ?? 3,
-    passing: evaluation.passing ?? 3,
-    rebounding: evaluation.rebounding ?? 3,
-    on_ball_defense: evaluation.on_ball_defense ?? 3,
-    off_ball_defense: evaluation.off_ball_defense ?? 3,
-    offensive_knowledge: evaluation.offensive_knowledge ?? 3,
-    court_vision: evaluation.court_vision ?? 3,
-    attitude_coachability: evaluation.attitude_coachability ?? 3,
-    general_notes: evaluation.general_notes ?? "",
-    suggested_team: evaluation.suggested_team ?? "Undecided",
+      evaluator: evaluation.evaluator ?? "",
+      speed_quickness: evaluation.speed_quickness ?? 3,
+      strength: evaluation.strength ?? 3,
+      endurance: evaluation.endurance ?? 3,
+      ball_handling: evaluation.ball_handling ?? 3,
+      shooting_mechanics: evaluation.shooting_mechanics ?? 3,
+      shooting_consistency: evaluation.shooting_consistency ?? 3,
+      passing: evaluation.passing ?? 3,
+      rebounding: evaluation.rebounding ?? 3,
+      on_ball_defense: evaluation.on_ball_defense ?? 3,
+      off_ball_defense: evaluation.off_ball_defense ?? 3,
+      offensive_knowledge: evaluation.offensive_knowledge ?? 3,
+      court_vision: evaluation.court_vision ?? 3,
+      attitude_coachability: evaluation.attitude_coachability ?? 3,
+      general_notes: evaluation.general_notes ?? "",
+      suggested_team: evaluation.suggested_team ?? "Undecided",
     });
+
+    setStatus(
+      `Loaded evaluation${
+        evaluation.evaluator ? ` by ${evaluation.evaluator}` : ""
+      }.`
+    );
   }
 
   function startNewEvaluation() {
     setEditingEvaluationId(null);
     setEvalForm(initialEvalForm());
-  }
-
-  async function saveEvaluation(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-
-    if (!selectedPlayer) {
-      setStatus("Please select a player first.");
-      return;
-    }
-
-    const payload = {
-      player_id: selectedPlayer.id,
-      evaluator: evalForm.evaluator || null,
-      speed_quickness: evalForm.speed_quickness,
-      strength: evalForm.strength,
-      endurance: evalForm.endurance,
-      ball_handling: evalForm.ball_handling,
-      shooting_mechanics: evalForm.shooting_mechanics,
-      shooting_consistency: evalForm.shooting_consistency,
-      passing: evalForm.passing,
-      rebounding: evalForm.rebounding,
-      on_ball_defense: evalForm.on_ball_defense,
-      off_ball_defense: evalForm.off_ball_defense,
-      offensive_knowledge: evalForm.offensive_knowledge,
-      court_vision: evalForm.court_vision,
-      attitude_coachability: evalForm.attitude_coachability,
-      total_score: totalScore(evalForm),
-      general_notes: evalForm.general_notes,
-      suggested_team: evalForm.suggested_team,
-    };
-
-    let error = null;
-
-    if (editingEvaluationId) {
-      const result = await supabase
-        .from("evaluations")
-        .update(payload)
-        .eq("id", editingEvaluationId);
-
-      error = result.error;
-    } else {
-      const result = await supabase.from("evaluations").insert([payload]);
-      error = result.error;
-    }
-
-    if (error) {
-      setStatus(`Evaluation save error: ${error.message}`);
-      return;
-    }
-
-    await supabase
-      .from("players")
-      .update({ suggested_team: evalForm.suggested_team })
-      .eq("id", selectedPlayer.id);
-
-    setStatus(editingEvaluationId ? "Evaluation updated." : "Evaluation saved.");
-
-    await refreshAll();
-    await loadPlayerEvaluations(selectedPlayer.id);
-    
-    setEvalForm(initialEvalForm());
-    setEditingEvaluationId(null);
-
     setStatus(
-      editingEvaluationId
-        ? `Evaluation updated for ${selectedPlayer.first_name} ${selectedPlayer.last_name}.`
-        : `Evaluation saved for ${selectedPlayer.first_name} ${selectedPlayer.last_name}.`
-      );  
-
+      selectedPlayer
+        ? `Starting new evaluation for ${selectedPlayer.first_name} ${selectedPlayer.last_name}.`
+        : "Starting new evaluation."
+    );
   }
-
 
   useEffect(() => {
     refreshAll();
   }, []);
-
-  useEffect(() => {
-    if (selectedPlayerId) {
-      loadPlayerEvaluations(selectedPlayerId);
-    } else {
-      setPlayerEvaluations([]);
-    }
-  }, [selectedPlayerId]);
 
   useEffect(() => {
     if (selectedPlayerId) {
@@ -352,20 +300,19 @@ export default function App() {
       setPlayerEvaluations([]);
     }
   }, [selectedPlayerId]);
- 
+
   const filteredPlayers = useMemo(() => {
     return players.filter((player) => {
       const text =
         `${player.first_name ?? ""} ${player.last_name ?? ""} ${player.school ?? ""} ${player.parent_phone ?? ""} ${player.parent_email ?? ""}`.toLowerCase();
+
       const matchesSearch = text.includes(search.toLowerCase());
       const matchesGroup =
         groupFilter === "All" || player.grade_group === groupFilter;
+
       return matchesSearch && matchesGroup;
     });
   }, [players, search, groupFilter]);
-
-  const selectedPlayer =
-    players.find((p) => p.id === selectedPlayerId) ?? null;
 
   const latestEvalMap = useMemo(() => {
     const map = new Map<string, LatestEvaluation>();
@@ -381,7 +328,7 @@ export default function App() {
       "16u Honor": [],
       "17u Salute": [],
       "17u Honor": [],
-      "Undecided": [],
+      Undecided: [],
     };
 
     players.forEach((player) => {
@@ -437,6 +384,7 @@ export default function App() {
     });
 
     await refreshAll();
+    setStatus("Player registered successfully.");
   }
 
   async function toggleCheckIn(player: Player) {
@@ -453,12 +401,14 @@ export default function App() {
     }
 
     setPlayers((prev) =>
-      prev.map((p) =>
-        p.id === player.id ? { ...p, checked_in: newValue } : p
-      )
+      prev.map((p) => (p.id === player.id ? { ...p, checked_in: newValue } : p))
     );
 
-    setStatus("Attendance updated.");
+    setStatus(
+      `${player.first_name} ${player.last_name} ${
+        newValue ? "checked in" : "marked absent"
+      }.`
+    );
   }
 
   async function updateSuggestedTeam(player: Player, team: TeamOption) {
@@ -473,12 +423,12 @@ export default function App() {
     }
 
     setPlayers((prev) =>
-      prev.map((p) =>
-        p.id === player.id ? { ...p, suggested_team: team } : p
-      )
+      prev.map((p) => (p.id === player.id ? { ...p, suggested_team: team } : p))
     );
 
-    setStatus("Team updated.");
+    setStatus(
+      `${player.first_name} ${player.last_name} assigned to ${team}.`
+    );
   }
 
   async function saveEvaluation(e: FormEvent<HTMLFormElement>) {
@@ -488,6 +438,8 @@ export default function App() {
       setStatus("Please select a player first.");
       return;
     }
+
+    const isEditing = Boolean(editingEvaluationId);
 
     const payload = {
       player_id: selectedPlayer.id,
@@ -510,7 +462,19 @@ export default function App() {
       suggested_team: evalForm.suggested_team,
     };
 
-    const { error } = await supabase.from("evaluations").insert([payload]);
+    let error: { message: string } | null = null;
+
+    if (editingEvaluationId) {
+      const result = await supabase
+        .from("evaluations")
+        .update(payload)
+        .eq("id", editingEvaluationId);
+
+      error = result.error;
+    } else {
+      const result = await supabase.from("evaluations").insert([payload]);
+      error = result.error;
+    }
 
     if (error) {
       setStatus(`Evaluation save error: ${error.message}`);
@@ -522,8 +486,25 @@ export default function App() {
       .update({ suggested_team: evalForm.suggested_team })
       .eq("id", selectedPlayer.id);
 
-    setStatus("Evaluation saved.");
-    await refreshAll();
+    setPlayers((prev) =>
+      prev.map((p) =>
+        p.id === selectedPlayer.id
+          ? { ...p, suggested_team: evalForm.suggested_team }
+          : p
+      )
+    );
+
+    await loadLatestEvaluations();
+    await loadPlayerEvaluations(selectedPlayer.id);
+
+    setEvalForm(initialEvalForm());
+    setEditingEvaluationId(null);
+
+    setStatus(
+      isEditing
+        ? `Evaluation updated for ${selectedPlayer.first_name} ${selectedPlayer.last_name}.`
+        : `Evaluation saved for ${selectedPlayer.first_name} ${selectedPlayer.last_name}.`
+    );
   }
 
   return (
@@ -539,25 +520,41 @@ export default function App() {
       <h1 style={{ fontSize: 60, marginBottom: 12 }}>Soldiers Try-Outs</h1>
       <p style={{ fontSize: 18, marginBottom: 20 }}>{status}</p>
 
-      <div style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap" }}>
+      <div
+        style={{
+          display: "flex",
+          gap: 12,
+          marginBottom: 24,
+          flexWrap: "wrap",
+        }}
+      >
         <button
           type="button"
           onClick={() => setTab("attendance")}
-          style={{ ...buttonStyle, background: tab === "attendance" ? "#15803d" : "#111111" }}
+          style={{
+            ...buttonStyle,
+            background: tab === "attendance" ? "#15803d" : "#111111",
+          }}
         >
           Attendance
         </button>
         <button
           type="button"
           onClick={() => setTab("evaluations")}
-          style={{ ...buttonStyle, background: tab === "evaluations" ? "#15803d" : "#111111" }}
+          style={{
+            ...buttonStyle,
+            background: tab === "evaluations" ? "#15803d" : "#111111",
+          }}
         >
           Evaluations
         </button>
         <button
           type="button"
           onClick={() => setTab("rosters")}
-          style={{ ...buttonStyle, background: tab === "rosters" ? "#15803d" : "#111111" }}
+          style={{
+            ...buttonStyle,
+            background: tab === "rosters" ? "#15803d" : "#111111",
+          }}
         >
           Rosters
         </button>
@@ -576,22 +573,83 @@ export default function App() {
             <h2 style={{ fontSize: 34 }}>Onsite Registration</h2>
 
             <form onSubmit={addPlayer} style={{ display: "grid", gap: 12 }}>
-              <input placeholder="First Name" value={form.first_name} onChange={(e) => setForm({ ...form, first_name: e.target.value })} style={inputStyle} />
-              <input placeholder="Last Name" value={form.last_name} onChange={(e) => setForm({ ...form, last_name: e.target.value })} style={inputStyle} />
-              <input placeholder="Grade" value={form.grade} onChange={(e) => setForm({ ...form, grade: e.target.value })} style={inputStyle} />
-              <input placeholder="School" value={form.school} onChange={(e) => setForm({ ...form, school: e.target.value })} style={inputStyle} />
-              <input type="date" value={form.birth_date} onChange={(e) => setForm({ ...form, birth_date: e.target.value })} style={inputStyle} />
-              <input placeholder="Player Cell" value={form.player_phone} onChange={(e) => setForm({ ...form, player_phone: e.target.value })} style={inputStyle} />
-              <input placeholder="Parent Cell" value={form.parent_phone} onChange={(e) => setForm({ ...form, parent_phone: e.target.value })} style={inputStyle} />
-              <input placeholder="Parent Email" value={form.parent_email} onChange={(e) => setForm({ ...form, parent_email: e.target.value })} style={inputStyle} />
-              <button type="submit" style={buttonStyle}>Register Player</button>
+              <input
+                placeholder="First Name"
+                value={form.first_name}
+                onChange={(e) =>
+                  setForm({ ...form, first_name: e.target.value })
+                }
+                style={inputStyle}
+              />
+              <input
+                placeholder="Last Name"
+                value={form.last_name}
+                onChange={(e) =>
+                  setForm({ ...form, last_name: e.target.value })
+                }
+                style={inputStyle}
+              />
+              <input
+                placeholder="Grade"
+                value={form.grade}
+                onChange={(e) => setForm({ ...form, grade: e.target.value })}
+                style={inputStyle}
+              />
+              <input
+                placeholder="School"
+                value={form.school}
+                onChange={(e) => setForm({ ...form, school: e.target.value })}
+                style={inputStyle}
+              />
+              <input
+                type="date"
+                value={form.birth_date}
+                onChange={(e) =>
+                  setForm({ ...form, birth_date: e.target.value })
+                }
+                style={inputStyle}
+              />
+              <input
+                placeholder="Player Cell"
+                value={form.player_phone}
+                onChange={(e) =>
+                  setForm({ ...form, player_phone: e.target.value })
+                }
+                style={inputStyle}
+              />
+              <input
+                placeholder="Parent Cell"
+                value={form.parent_phone}
+                onChange={(e) =>
+                  setForm({ ...form, parent_phone: e.target.value })
+                }
+                style={inputStyle}
+              />
+              <input
+                placeholder="Parent Email"
+                value={form.parent_email}
+                onChange={(e) =>
+                  setForm({ ...form, parent_email: e.target.value })
+                }
+                style={inputStyle}
+              />
+              <button type="submit" style={buttonStyle}>
+                Register Player
+              </button>
             </form>
           </div>
 
           <div>
             <h2 style={{ fontSize: 34 }}>Players</h2>
 
-            <div style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
+            <div
+              style={{
+                display: "flex",
+                gap: 12,
+                marginBottom: 16,
+                flexWrap: "wrap",
+              }}
+            >
               <input
                 placeholder="Search player, school, phone, email"
                 value={search}
@@ -613,7 +671,14 @@ export default function App() {
             <div style={{ display: "grid", gap: 14 }}>
               {filteredPlayers.map((player) => (
                 <div key={player.id} style={cardStyle}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "start" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 16,
+                      alignItems: "start",
+                    }}
+                  >
                     <div>
                       <div style={{ fontSize: 24, fontWeight: 700 }}>
                         {player.last_name}, {player.first_name}
@@ -621,7 +686,9 @@ export default function App() {
                       <div style={{ fontSize: 18, marginTop: 8 }}>
                         {player.grade_group} • {player.grade}
                       </div>
-                      <div style={{ fontSize: 18, marginTop: 4 }}>{player.school}</div>
+                      <div style={{ fontSize: 18, marginTop: 4 }}>
+                        {player.school}
+                      </div>
                       <div style={{ fontSize: 18, marginTop: 10 }}>
                         Player: {player.player_phone || "-"}
                       </div>
@@ -649,7 +716,12 @@ export default function App() {
 
                       <select
                         value={player.suggested_team ?? "Undecided"}
-                        onChange={(e) => updateSuggestedTeam(player, e.target.value as TeamOption)}
+                        onChange={(e) =>
+                          updateSuggestedTeam(
+                            player,
+                            e.target.value as TeamOption
+                          )
+                        }
                         style={{ ...inputStyle, width: "100%" }}
                       >
                         {TEAM_OPTIONS.map((team) => (
@@ -678,6 +750,7 @@ export default function App() {
         >
           <div>
             <h2 style={{ fontSize: 34 }}>Select Player</h2>
+
             <div style={{ display: "grid", gap: 10 }}>
               {players.map((player) => (
                 <button
@@ -687,7 +760,8 @@ export default function App() {
                   style={{
                     ...smallButton,
                     textAlign: "left",
-                    background: selectedPlayerId === player.id ? "#15803d" : "#111827",
+                    background:
+                      selectedPlayerId === player.id ? "#15803d" : "#111827",
                     border: "1px solid #334155",
                   }}
                 >
@@ -700,44 +774,65 @@ export default function App() {
                 </button>
               ))}
             </div>
-             <div style={{ marginTop: 30 }}>
-              <h3>Evaluation History</h3>
+
+            <div style={{ marginTop: 24, ...cardStyle }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: 12,
+                }}
+              >
+                <h3 style={{ fontSize: 24, margin: 0 }}>Evaluation History</h3>
+                <button
+                  type="button"
+                  onClick={startNewEvaluation}
+                  style={smallButton}
+                >
+                  New Evaluation
+                </button>
+              </div>
 
               <div style={{ display: "grid", gap: 10 }}>
-                {playerEvaluations.map((evaluation) => (
-                  <button
-                    key={evaluation.id}
-                    type="button"
-                    onClick={() => loadEvaluationIntoForm(evaluation)}
-                    style={{
-                      padding: 10,
-                      borderRadius: 10,
-                      background: "#111827",
-                      color: "white",
-                      border: "1px solid #334155",
-                      textAlign: "left",
-                    }}
-                  >
-                    <div>
-                      Evaluator: {evaluation.evaluator || "Unknown"}
-                    </div>
-
-                    <div>
-                      Score: {evaluation.total_score ?? "-"} / 65
-                    </div>
-
-                    <div>
-                      Team: {evaluation.suggested_team ?? "Undecided"}
-                    </div>
-                  </button>
-                ))}
+                {playerEvaluations.length === 0 ? (
+                  <div style={{ color: "#cbd5e1" }}>No evaluations yet.</div>
+                ) : (
+                  playerEvaluations.map((evaluation) => (
+                    <button
+                      key={evaluation.id}
+                      type="button"
+                      onClick={() => loadEvaluationIntoForm(evaluation)}
+                      style={{
+                        ...smallButton,
+                        textAlign: "left",
+                        background:
+                          editingEvaluationId === evaluation.id
+                            ? "#15803d"
+                            : "#111827",
+                        border: "1px solid #334155",
+                      }}
+                    >
+                      <div>
+                        Evaluator: {evaluation.evaluator || "Unknown"}
+                      </div>
+                      <div>Score: {evaluation.total_score ?? "-"} / 65</div>
+                      <div>
+                        Team: {evaluation.suggested_team ?? "Undecided"}
+                      </div>
+                    </button>
+                  ))
+                )}
               </div>
             </div>
           </div>
 
           <div>
             <h2 style={{ fontSize: 34 }}>
-              Evaluation {selectedPlayer ? `- ${selectedPlayer.first_name} ${selectedPlayer.last_name}` : ""}
+              Evaluation{" "}
+              {selectedPlayer
+                ? `- ${selectedPlayer.first_name} ${selectedPlayer.last_name}`
+                : ""}
             </h2>
 
             {selectedPlayer ? (
@@ -746,7 +841,9 @@ export default function App() {
                   <label style={labelStyle}>Evaluator</label>
                   <input
                     value={evalForm.evaluator}
-                    onChange={(e) => setEvalForm({ ...evalForm, evaluator: e.target.value })}
+                    onChange={(e) =>
+                      setEvalForm({ ...evalForm, evaluator: e.target.value })
+                    }
                     style={inputStyle}
                     placeholder="Coach name"
                   />
@@ -754,7 +851,12 @@ export default function App() {
                   <label style={labelStyle}>Suggested Team</label>
                   <select
                     value={evalForm.suggested_team}
-                    onChange={(e) => setEvalForm({ ...evalForm, suggested_team: e.target.value as TeamOption })}
+                    onChange={(e) =>
+                      setEvalForm({
+                        ...evalForm,
+                        suggested_team: e.target.value as TeamOption,
+                      })
+                    }
                     style={inputStyle}
                   >
                     {TEAM_OPTIONS.map((team) => (
@@ -771,45 +873,197 @@ export default function App() {
 
                 <div style={cardStyle}>
                   <h3 style={sectionTitle}>Physical Attributes</h3>
-                  <EvalRow label="Speed/Quickness" control={<ScoreSelect value={evalForm.speed_quickness} onChange={(value) => setEvalForm({ ...evalForm, speed_quickness: value })} />} />
-                  <EvalRow label="Strength" control={<ScoreSelect value={evalForm.strength} onChange={(value) => setEvalForm({ ...evalForm, strength: value })} />} />
-                  <EvalRow label="Endurance" control={<ScoreSelect value={evalForm.endurance} onChange={(value) => setEvalForm({ ...evalForm, endurance: value })} />} />
+                  <EvalRow
+                    label="Speed/Quickness"
+                    control={
+                      <ScoreSelect
+                        value={evalForm.speed_quickness}
+                        onChange={(value) =>
+                          setEvalForm({ ...evalForm, speed_quickness: value })
+                        }
+                      />
+                    }
+                  />
+                  <EvalRow
+                    label="Strength"
+                    control={
+                      <ScoreSelect
+                        value={evalForm.strength}
+                        onChange={(value) =>
+                          setEvalForm({ ...evalForm, strength: value })
+                        }
+                      />
+                    }
+                  />
+                  <EvalRow
+                    label="Endurance"
+                    control={
+                      <ScoreSelect
+                        value={evalForm.endurance}
+                        onChange={(value) =>
+                          setEvalForm({ ...evalForm, endurance: value })
+                        }
+                      />
+                    }
+                  />
                 </div>
 
                 <div style={cardStyle}>
                   <h3 style={sectionTitle}>Skill Evaluation</h3>
-                  <EvalRow label="Ball Handling" control={<ScoreSelect value={evalForm.ball_handling} onChange={(value) => setEvalForm({ ...evalForm, ball_handling: value })} />} />
-                  <EvalRow label="Shooting Mechanics/Form" control={<ScoreSelect value={evalForm.shooting_mechanics} onChange={(value) => setEvalForm({ ...evalForm, shooting_mechanics: value })} />} />
-                  <EvalRow label="Shooting Consistency" control={<ScoreSelect value={evalForm.shooting_consistency} onChange={(value) => setEvalForm({ ...evalForm, shooting_consistency: value })} />} />
-                  <EvalRow label="Passing Ability/Accuracy" control={<ScoreSelect value={evalForm.passing} onChange={(value) => setEvalForm({ ...evalForm, passing: value })} />} />
-                  <EvalRow label="Rebounding" control={<ScoreSelect value={evalForm.rebounding} onChange={(value) => setEvalForm({ ...evalForm, rebounding: value })} />} />
-                  <EvalRow label="On-Ball Defense" control={<ScoreSelect value={evalForm.on_ball_defense} onChange={(value) => setEvalForm({ ...evalForm, on_ball_defense: value })} />} />
-                  <EvalRow label="Off-Ball Defense/Awareness" control={<ScoreSelect value={evalForm.off_ball_defense} onChange={(value) => setEvalForm({ ...evalForm, off_ball_defense: value })} />} />
+                  <EvalRow
+                    label="Ball Handling"
+                    control={
+                      <ScoreSelect
+                        value={evalForm.ball_handling}
+                        onChange={(value) =>
+                          setEvalForm({ ...evalForm, ball_handling: value })
+                        }
+                      />
+                    }
+                  />
+                  <EvalRow
+                    label="Shooting Mechanics/Form"
+                    control={
+                      <ScoreSelect
+                        value={evalForm.shooting_mechanics}
+                        onChange={(value) =>
+                          setEvalForm({
+                            ...evalForm,
+                            shooting_mechanics: value,
+                          })
+                        }
+                      />
+                    }
+                  />
+                  <EvalRow
+                    label="Shooting Consistency"
+                    control={
+                      <ScoreSelect
+                        value={evalForm.shooting_consistency}
+                        onChange={(value) =>
+                          setEvalForm({
+                            ...evalForm,
+                            shooting_consistency: value,
+                          })
+                        }
+                      />
+                    }
+                  />
+                  <EvalRow
+                    label="Passing Ability/Accuracy"
+                    control={
+                      <ScoreSelect
+                        value={evalForm.passing}
+                        onChange={(value) =>
+                          setEvalForm({ ...evalForm, passing: value })
+                        }
+                      />
+                    }
+                  />
+                  <EvalRow
+                    label="Rebounding"
+                    control={
+                      <ScoreSelect
+                        value={evalForm.rebounding}
+                        onChange={(value) =>
+                          setEvalForm({ ...evalForm, rebounding: value })
+                        }
+                      />
+                    }
+                  />
+                  <EvalRow
+                    label="On-Ball Defense"
+                    control={
+                      <ScoreSelect
+                        value={evalForm.on_ball_defense}
+                        onChange={(value) =>
+                          setEvalForm({ ...evalForm, on_ball_defense: value })
+                        }
+                      />
+                    }
+                  />
+                  <EvalRow
+                    label="Off-Ball Defense/Awareness"
+                    control={
+                      <ScoreSelect
+                        value={evalForm.off_ball_defense}
+                        onChange={(value) =>
+                          setEvalForm({ ...evalForm, off_ball_defense: value })
+                        }
+                      />
+                    }
+                  />
                 </div>
 
                 <div style={cardStyle}>
                   <h3 style={sectionTitle}>Basketball IQ & Intangibles</h3>
-                  <EvalRow label="Offensive Knowledge/Spacing" control={<ScoreSelect value={evalForm.offensive_knowledge} onChange={(value) => setEvalForm({ ...evalForm, offensive_knowledge: value })} />} />
-                  <EvalRow label="Court Vision/Decision Making" control={<ScoreSelect value={evalForm.court_vision} onChange={(value) => setEvalForm({ ...evalForm, court_vision: value })} />} />
-                  <EvalRow label="Attitude/Work Ethic/Coachability" control={<ScoreSelect value={evalForm.attitude_coachability} onChange={(value) => setEvalForm({ ...evalForm, attitude_coachability: value })} />} />
+                  <EvalRow
+                    label="Offensive Knowledge/Spacing"
+                    control={
+                      <ScoreSelect
+                        value={evalForm.offensive_knowledge}
+                        onChange={(value) =>
+                          setEvalForm({
+                            ...evalForm,
+                            offensive_knowledge: value,
+                          })
+                        }
+                      />
+                    }
+                  />
+                  <EvalRow
+                    label="Court Vision/Decision Making"
+                    control={
+                      <ScoreSelect
+                        value={evalForm.court_vision}
+                        onChange={(value) =>
+                          setEvalForm({ ...evalForm, court_vision: value })
+                        }
+                      />
+                    }
+                  />
+                  <EvalRow
+                    label="Attitude/Work Ethic/Coachability"
+                    control={
+                      <ScoreSelect
+                        value={evalForm.attitude_coachability}
+                        onChange={(value) =>
+                          setEvalForm({
+                            ...evalForm,
+                            attitude_coachability: value,
+                          })
+                        }
+                      />
+                    }
+                  />
                 </div>
 
                 <div style={cardStyle}>
                   <h3 style={sectionTitle}>General Notes</h3>
                   <textarea
                     value={evalForm.general_notes}
-                    onChange={(e) => setEvalForm({ ...evalForm, general_notes: e.target.value })}
+                    onChange={(e) =>
+                      setEvalForm({
+                        ...evalForm,
+                        general_notes: e.target.value,
+                      })
+                    }
                     style={{ ...inputStyle, minHeight: 120, resize: "vertical" }}
                     placeholder="Add strengths, concerns, fit, upside, and notes..."
                   />
                 </div>
+
                 <div style={{ fontSize: 18, fontWeight: 700 }}>
-                  Mode: {editingEvaluationId ? "Editing Existing Evaluation" : "New Evaluation"}
+                  Mode:{" "}
+                  {editingEvaluationId
+                    ? "Editing Existing Evaluation"
+                    : "New Evaluation"}
                 </div>
+
                 <button type="submit" style={buttonStyle}>
                   Save Evaluation
                 </button>
-               </form>
+              </form>
             ) : (
               <p>Select a player first.</p>
             )}
@@ -819,7 +1073,13 @@ export default function App() {
         <div>
           <h2 style={{ fontSize: 34, marginBottom: 16 }}>Rosters</h2>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 18 }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, 1fr)",
+              gap: 18,
+            }}
+          >
             {TEAM_OPTIONS.map((team) => (
               <div key={team} style={cardStyle}>
                 <div style={{ fontSize: 26, fontWeight: 700, marginBottom: 10 }}>
@@ -877,7 +1137,7 @@ function EvalRow({
   control,
 }: {
   label: string;
-  control: React.ReactNode;
+  control: ReactNode;
 }) {
   return (
     <div
@@ -895,7 +1155,7 @@ function EvalRow({
   );
 }
 
-const labelStyle: React.CSSProperties = {
+const labelStyle: CSSProperties = {
   display: "block",
   marginBottom: 8,
   marginTop: 6,
@@ -903,12 +1163,12 @@ const labelStyle: React.CSSProperties = {
   fontWeight: 600,
 };
 
-const sectionTitle: React.CSSProperties = {
+const sectionTitle: CSSProperties = {
   fontSize: 24,
   marginBottom: 16,
 };
 
-const inputStyle: React.CSSProperties = {
+const inputStyle: CSSProperties = {
   padding: "14px 16px",
   borderRadius: 8,
   border: "1px solid #6b7280",
@@ -918,7 +1178,7 @@ const inputStyle: React.CSSProperties = {
   width: "100%",
 };
 
-const buttonStyle: React.CSSProperties = {
+const buttonStyle: CSSProperties = {
   padding: "16px 18px",
   borderRadius: 16,
   border: "none",
@@ -928,7 +1188,7 @@ const buttonStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
-const smallButton: React.CSSProperties = {
+const smallButton: CSSProperties = {
   padding: "12px 14px",
   borderRadius: 10,
   border: "none",
@@ -937,7 +1197,7 @@ const smallButton: React.CSSProperties = {
   cursor: "pointer",
 };
 
-const cardStyle: React.CSSProperties = {
+const cardStyle: CSSProperties = {
   border: "1px solid #334155",
   padding: 18,
   borderRadius: 20,
