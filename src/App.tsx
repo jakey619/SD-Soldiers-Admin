@@ -508,8 +508,9 @@ export default function App() {
   return (
     <div className="app-shell">
       <div className="app-header">
-        <h1 className="app-title">Soldiers Try-Outs</h1>
-        <p className="app-status">{status}</p>
+        <h1 className="app-title">San Diego Soldiers</h1>
+        <p className="app-subtitle">Tryout Dashboard</p>
+        <div className="app-status">{status}</div>
       </div>
 
       <div className="tab-row">
