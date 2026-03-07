@@ -1,6 +1,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ChangeEvent,
   type FormEvent,
@@ -194,32 +195,6 @@ function ScoreSelect({
   );
 }
 
-function PhotoInput({
-  onChange,
-  label = "Take/Upload Photo",
-}: {
-  onChange: (file: File | null) => void;
-  label?: string;
-}) {
-  function handleChange(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0] ?? null;
-    onChange(file);
-  }
-
-  return (
-    <div className="photo-input-wrap">
-      <label className="field-label">{label}</label>
-      <input
-        className="input"
-        type="file"
-        accept="image/*"
-        capture="environment"
-        onChange={handleChange}
-      />
-    </div>
-  );
-}
-
 function PlayerPhoto({
   src,
   alt,
@@ -245,6 +220,187 @@ function PlayerPhoto({
       aria-label="No player photo"
     >
       No Photo
+    </div>
+  );
+}
+
+function dataUrlToFile(dataUrl: string, filename: string): File {
+  const arr = dataUrl.split(",");
+  const mimeMatch = arr[0].match(/:(.*?);/);
+  const mime = mimeMatch ? mimeMatch[1] : "image/jpeg";
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+
+  while (n--) {
+    u8arr[n] = bstr.charCodeAt(n);
+  }
+
+  return new File([u8arr], filename, { type: mime });
+}
+
+function CameraCapture({
+  onFileReady,
+}: {
+  onFileReady: (file: File) => void;
+}) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraError, setCameraError] = useState("");
+  const [previewUrl, setPreviewUrl] = useState<string>("");
+
+  async function openCamera() {
+    setCameraError("");
+    setPreviewUrl("");
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: "environment" },
+        },
+        audio: false,
+      });
+
+      streamRef.current = stream;
+      setCameraOpen(true);
+
+      requestAnimationFrame(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch(() => {});
+        }
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unable to access camera.";
+      setCameraError(message);
+    }
+  }
+
+  function stopCamera() {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    setCameraOpen(false);
+  }
+
+  function capturePhoto() {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+
+    if (!video || !canvas) return;
+
+    const width = video.videoWidth || 1280;
+    const height = video.videoHeight || 720;
+
+    canvas.width = width;
+    canvas.height = height;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.drawImage(video, 0, 0, width, height);
+
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+    setPreviewUrl(dataUrl);
+
+    const file = dataUrlToFile(dataUrl, `player-photo-${Date.now()}.jpg`);
+    onFileReady(file);
+
+    stopCamera();
+  }
+
+  function clearPreview() {
+    setPreviewUrl("");
+  }
+
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+      }
+    };
+  }, []);
+
+  return (
+    <div className="camera-capture">
+      <div className="camera-actions">
+        <button type="button" className="secondary-button" onClick={openCamera}>
+          Open Camera
+        </button>
+        {previewUrl && (
+          <button type="button" className="secondary-button" onClick={clearPreview}>
+            Retake
+          </button>
+        )}
+      </div>
+
+      {cameraError && <div className="camera-error">{cameraError}</div>}
+
+      {cameraOpen && (
+        <div className="camera-box">
+          <video ref={videoRef} className="camera-video" playsInline muted />
+          <div className="camera-actions">
+            <button type="button" className="primary-button" onClick={capturePhoto}>
+              Capture Photo
+            </button>
+            <button type="button" className="secondary-button" onClick={stopCamera}>
+              Cancel Camera
+            </button>
+          </div>
+        </div>
+      )}
+
+      {previewUrl && (
+        <div className="camera-preview-wrap">
+          <img src={previewUrl} alt="Captured preview" className="camera-preview" />
+        </div>
+      )}
+
+      <canvas ref={canvasRef} style={{ display: "none" }} />
+    </div>
+  );
+}
+
+function PhotoPicker({
+  onFileReady,
+  currentPhotoUrl,
+}: {
+  onFileReady: (file: File | null) => void;
+  currentPhotoUrl?: string | null;
+}) {
+  function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null;
+    onFileReady(file);
+  }
+
+  return (
+    <div className="photo-picker">
+      <label className="field-label">Player Photo</label>
+      <CameraCapture
+        onFileReady={(file) => {
+          onFileReady(file);
+        }}
+      />
+
+      <div className="photo-divider">or</div>
+
+      <input
+        className="input"
+        type="file"
+        accept="image/*"
+        onChange={handleFileChange}
+      />
+
+      {currentPhotoUrl && (
+        <div className="existing-photo-wrap">
+          <PlayerPhoto src={currentPhotoUrl} alt="Current player photo" large />
+        </div>
+      )}
     </div>
   );
 }
@@ -581,15 +737,20 @@ export default function App() {
       return;
     }
 
-    let photoUrl: string | null = null;
-
     if (registrationPhotoFile) {
       try {
-        photoUrl = await uploadPlayerPhoto(registrationPhotoFile, data.id);
-        await supabase
+        const photoUrl = await uploadPlayerPhoto(registrationPhotoFile, data.id);
+
+        const { error: photoUpdateError } = await supabase
           .from("players")
           .update({ photo_url: photoUrl })
           .eq("id", data.id);
+
+        if (photoUpdateError) {
+          setStatus(
+            `Player created, but photo save failed: ${photoUpdateError.message}`
+          );
+        }
       } catch (photoError) {
         const message =
           photoError instanceof Error ? photoError.message : "Photo upload failed.";
@@ -608,7 +769,10 @@ export default function App() {
 
     if (!editingPlayerId) return;
 
-    let photoUrl = selectedPlayer?.photo_url ?? null;
+    const currentPlayer =
+      players.find((p) => p.id === editingPlayerId) ?? null;
+
+    let photoUrl = currentPlayer?.photo_url ?? null;
 
     if (editPhotoFile) {
       try {
@@ -1123,9 +1287,8 @@ export default function App() {
             </div>
 
             <form onSubmit={addPlayer} className="form-stack">
-              <PhotoInput
-                label="Player Photo"
-                onChange={(file) => setRegistrationPhotoFile(file)}
+              <PhotoPicker
+                onFileReady={(file) => setRegistrationPhotoFile(file)}
               />
 
               <input
@@ -1221,20 +1384,12 @@ export default function App() {
             </div>
 
             <form onSubmit={savePlayerEdits} className="form-stack">
-              <PhotoInput
-                label="Update Player Photo"
-                onChange={(file) => setEditPhotoFile(file)}
+              <PhotoPicker
+                onFileReady={(file) => setEditPhotoFile(file)}
+                currentPhotoUrl={
+                  players.find((p) => p.id === editingPlayerId)?.photo_url
+                }
               />
-
-              {selectedPlayer?.photo_url && (
-                <div className="existing-photo-wrap">
-                  <PlayerPhoto
-                    src={selectedPlayer.photo_url}
-                    alt={`${selectedPlayer.first_name ?? ""} ${selectedPlayer.last_name ?? ""}`}
-                    large
-                  />
-                </div>
-              )}
 
               <input
                 className="input"

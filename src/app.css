@@ -682,13 +682,61 @@ textarea {
   flex-wrap: wrap;
 }
 
-.photo-input-wrap {
+.photo-picker {
   display: grid;
-  gap: 6px;
+  gap: 10px;
+}
+
+.photo-divider {
+  text-align: center;
+  color: #bfdbfe;
+  font-size: 14px;
+  opacity: 0.8;
+}
+
+.camera-capture {
+  display: grid;
+  gap: 10px;
+}
+
+.camera-box {
+  display: grid;
+  gap: 10px;
+}
+
+.camera-video {
+  width: 100%;
+  border-radius: 16px;
+  background: #000;
+  min-height: 220px;
+  object-fit: cover;
+}
+
+.camera-preview-wrap {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.camera-preview {
+  width: 180px;
+  max-width: 100%;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.camera-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.camera-error {
+  color: #fecaca;
+  font-size: 14px;
 }
 
 .existing-photo-wrap {
-  margin-bottom: 8px;
+  margin-top: 8px;
 }
 
 .evaluation-modal-grid {
@@ -790,7 +838,8 @@ textarea {
   }
 
   .selected-player-buttons,
-  .selected-actions {
+  .selected-actions,
+  .camera-actions {
     flex-direction: column;
   }
 
