@@ -569,4 +569,15 @@ textarea {
     background: rgba(15, 23, 42, 0.5);
     border: 1px solid rgba(148, 163, 184, 0.16);
   }
+
+  .edit-card {
+    margin-top: 18px;
+  }
+
+  .edit-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
 }

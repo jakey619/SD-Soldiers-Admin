@@ -6,11 +6,8 @@ import {
   type ReactNode,
 } from "react";
 import { supabase } from "./lib/supabase";
-import soldiersLogo from "./assets/soldiers-logo.jpg";
-
+import soldiersLogo from "./assets/logo.png";
 import "./app.css";
-
-
 
 type TeamOption =
   | "15u Salute"
@@ -48,25 +45,6 @@ type LatestEvaluation = {
   created_at: string | null;
 };
 
-type EvalForm = {
-  evaluator: string;
-  speed_quickness: number;
-  strength: number;
-  endurance: number;
-  ball_handling: number;
-  shooting_mechanics: number;
-  shooting_consistency: number;
-  passing: number;
-  rebounding: number;
-  on_ball_defense: number;
-  off_ball_defense: number;
-  offensive_knowledge: number;
-  court_vision: number;
-  attitude_coachability: number;
-  general_notes: string;
-  suggested_team: TeamOption;
-};
-
 type Evaluation = {
   id: string;
   player_id: string;
@@ -89,6 +67,25 @@ type Evaluation = {
   general_notes: string | null;
   suggested_team: TeamOption | null;
   created_at: string | null;
+};
+
+type EvalForm = {
+  evaluator: string;
+  speed_quickness: number;
+  strength: number;
+  endurance: number;
+  ball_handling: number;
+  shooting_mechanics: number;
+  shooting_consistency: number;
+  passing: number;
+  rebounding: number;
+  on_ball_defense: number;
+  off_ball_defense: number;
+  offensive_knowledge: number;
+  court_vision: number;
+  attitude_coachability: number;
+  general_notes: string;
+  suggested_team: TeamOption;
 };
 
 const TEAM_OPTIONS: TeamOption[] = [
@@ -184,6 +181,7 @@ export default function App() {
   const [editingEvaluationId, setEditingEvaluationId] = useState<string | null>(
     null
   );
+  const [editingPlayerId, setEditingPlayerId] = useState<string | null>(null);
   const [evalForm, setEvalForm] = useState<EvalForm>(initialEvalForm());
 
   const [form, setForm] = useState({
@@ -195,6 +193,18 @@ export default function App() {
     player_phone: "",
     parent_phone: "",
     parent_email: "",
+  });
+
+  const [editForm, setEditForm] = useState({
+    first_name: "",
+    last_name: "",
+    grade: "",
+    school: "",
+    birth_date: "",
+    player_phone: "",
+    parent_phone: "",
+    parent_email: "",
+    notes: "",
   });
 
   const selectedPlayer = players.find((p) => p.id === selectedPlayerId) ?? null;
@@ -254,7 +264,6 @@ export default function App() {
 
   function loadEvaluationIntoForm(evaluation: Evaluation) {
     setEditingEvaluationId(evaluation.id);
-
     setEvalForm({
       evaluator: evaluation.evaluator ?? "",
       speed_quickness: evaluation.speed_quickness ?? 3,
@@ -291,6 +300,27 @@ export default function App() {
     );
   }
 
+  function startEditPlayer(player: Player) {
+    setEditingPlayerId(player.id);
+    setEditForm({
+      first_name: player.first_name ?? "",
+      last_name: player.last_name ?? "",
+      grade: player.grade ?? "",
+      school: player.school ?? "",
+      birth_date: player.birth_date ?? "",
+      player_phone: player.player_phone ?? "",
+      parent_phone: player.parent_phone ?? "",
+      parent_email: player.parent_email ?? "",
+      notes: player.notes ?? "",
+    });
+    setStatus(`Editing ${player.first_name} ${player.last_name}.`);
+  }
+
+  function cancelEditPlayer() {
+    setEditingPlayerId(null);
+    setStatus("Edit cancelled.");
+  }
+
   useEffect(() => {
     refreshAll();
   }, []);
@@ -309,11 +339,9 @@ export default function App() {
     return players.filter((player) => {
       const text =
         `${player.first_name ?? ""} ${player.last_name ?? ""} ${player.school ?? ""} ${player.parent_phone ?? ""} ${player.parent_email ?? ""}`.toLowerCase();
-
       const matchesSearch = text.includes(search.toLowerCase());
       const matchesGroup =
         groupFilter === "All" || player.grade_group === groupFilter;
-
       return matchesSearch && matchesGroup;
     });
   }, [players, search, groupFilter]);
@@ -350,6 +378,13 @@ export default function App() {
 
     return groups;
   }, [players]);
+
+  const checkedInCount = useMemo(
+    () => players.filter((p) => p.checked_in).length,
+    [players]
+  );
+
+  const notCheckedInCount = players.length - checkedInCount;
 
   async function addPlayer(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -389,6 +424,44 @@ export default function App() {
 
     await refreshAll();
     setStatus("Player registered successfully.");
+  }
+
+  async function savePlayerEdits(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+
+    if (!editingPlayerId) return;
+
+    const payload = {
+      first_name: editForm.first_name,
+      last_name: editForm.last_name,
+      grade: editForm.grade,
+      grade_group: groupFromGrade(editForm.grade),
+      school: editForm.school || null,
+      birth_date: editForm.birth_date || null,
+      player_phone: editForm.player_phone || null,
+      parent_phone: editForm.parent_phone || null,
+      parent_email: editForm.parent_email || null,
+      notes: editForm.notes || null,
+    };
+
+    const { error } = await supabase
+      .from("players")
+      .update(payload)
+      .eq("id", editingPlayerId);
+
+    if (error) {
+      setStatus(`Edit error: ${error.message}`);
+      return;
+    }
+
+    setPlayers((prev) =>
+      prev.map((p) =>
+        p.id === editingPlayerId ? { ...p, ...payload } : p
+      )
+    );
+
+    setEditingPlayerId(null);
+    setStatus("Player info updated.");
   }
 
   async function toggleCheckIn(player: Player) {
@@ -471,7 +544,6 @@ export default function App() {
         .from("evaluations")
         .update(payload)
         .eq("id", editingEvaluationId);
-
       error = result.error;
     } else {
       const result = await supabase.from("evaluations").insert([payload]);
@@ -510,22 +582,39 @@ export default function App() {
   }
 
   return (
-  <div className="app-shell">
+    <div className="app-shell">
+      <div className="top-bar">
+        <div className="brand">
+          <img
+            src={soldiersLogo}
+            alt="San Diego Soldiers logo"
+            className="brand-logo"
+          />
+          <div className="brand-text">
+            <div className="brand-title">San Diego Soldiers</div>
+            <div className="brand-subtitle">Tryout Admin Dashboard</div>
+          </div>
+        </div>
 
-    <div className="top-bar">
-      <div className="brand">
-        <img src={soldiersLogo} alt="San Diego Soldiers logo" className="brand-logo" />
-
-        <div className="brand-text">
-          <div className="brand-title">San Diego Soldiers</div>
-          <div className="brand-subtitle">Tryout Admin Dashboard</div>
+        <div className="status-area">
+          <div className="app-status">{status}</div>
         </div>
       </div>
 
-      <div className="status-area">
-        <div className="app-status">{status}</div>
+      <div className="summary-row">
+        <div className="summary-card">
+          <div className="summary-label">Registered</div>
+          <div className="summary-value">{players.length}</div>
+        </div>
+        <div className="summary-card">
+          <div className="summary-label">Checked In</div>
+          <div className="summary-value">{checkedInCount}</div>
+        </div>
+        <div className="summary-card">
+          <div className="summary-label">Not Checked In</div>
+          <div className="summary-value">{notCheckedInCount}</div>
+        </div>
       </div>
-    </div>
 
       <div className="tab-row">
         <button
@@ -553,75 +642,171 @@ export default function App() {
 
       {tab === "attendance" ? (
         <div className="content-grid">
-          <div className="card">
-            <h2>Onsite Registration</h2>
+          <div>
+            <div className="card">
+              <h2>Onsite Registration</h2>
 
-            <form onSubmit={addPlayer} className="form-stack">
-              <input
-                className="input"
-                placeholder="First Name"
-                value={form.first_name}
-                onChange={(e) =>
-                  setForm({ ...form, first_name: e.target.value })
-                }
-              />
-              <input
-                className="input"
-                placeholder="Last Name"
-                value={form.last_name}
-                onChange={(e) =>
-                  setForm({ ...form, last_name: e.target.value })
-                }
-              />
-              <input
-                className="input"
-                placeholder="Grade"
-                value={form.grade}
-                onChange={(e) => setForm({ ...form, grade: e.target.value })}
-              />
-              <input
-                className="input"
-                placeholder="School"
-                value={form.school}
-                onChange={(e) => setForm({ ...form, school: e.target.value })}
-              />
-              <input
-                className="input"
-                type="date"
-                value={form.birth_date}
-                onChange={(e) =>
-                  setForm({ ...form, birth_date: e.target.value })
-                }
-              />
-              <input
-                className="input"
-                placeholder="Player Cell"
-                value={form.player_phone}
-                onChange={(e) =>
-                  setForm({ ...form, player_phone: e.target.value })
-                }
-              />
-              <input
-                className="input"
-                placeholder="Parent Cell"
-                value={form.parent_phone}
-                onChange={(e) =>
-                  setForm({ ...form, parent_phone: e.target.value })
-                }
-              />
-              <input
-                className="input"
-                placeholder="Parent Email"
-                value={form.parent_email}
-                onChange={(e) =>
-                  setForm({ ...form, parent_email: e.target.value })
-                }
-              />
+              <form onSubmit={addPlayer} className="form-stack">
+                <input
+                  className="input"
+                  placeholder="First Name"
+                  value={form.first_name}
+                  onChange={(e) =>
+                    setForm({ ...form, first_name: e.target.value })
+                  }
+                />
+                <input
+                  className="input"
+                  placeholder="Last Name"
+                  value={form.last_name}
+                  onChange={(e) =>
+                    setForm({ ...form, last_name: e.target.value })
+                  }
+                />
+                <input
+                  className="input"
+                  placeholder="Grade"
+                  value={form.grade}
+                  onChange={(e) => setForm({ ...form, grade: e.target.value })}
+                />
+                <input
+                  className="input"
+                  placeholder="School"
+                  value={form.school}
+                  onChange={(e) => setForm({ ...form, school: e.target.value })}
+                />
+                <input
+                  className="input"
+                  type="date"
+                  value={form.birth_date}
+                  onChange={(e) =>
+                    setForm({ ...form, birth_date: e.target.value })
+                  }
+                />
+                <input
+                  className="input"
+                  placeholder="Player Cell"
+                  value={form.player_phone}
+                  onChange={(e) =>
+                    setForm({ ...form, player_phone: e.target.value })
+                  }
+                />
+                <input
+                  className="input"
+                  placeholder="Parent Cell"
+                  value={form.parent_phone}
+                  onChange={(e) =>
+                    setForm({ ...form, parent_phone: e.target.value })
+                  }
+                />
+                <input
+                  className="input"
+                  placeholder="Parent Email"
+                  value={form.parent_email}
+                  onChange={(e) =>
+                    setForm({ ...form, parent_email: e.target.value })
+                  }
+                />
 
-              <button type="submit" className="primary-button">
-                Register Player
-              </button>
-            </form>
+                <button type="submit" className="primary-button">
+                  Register Player
+                </button>
+              </form>
+            </div>
+
+            {editingPlayerId && (
+              <div className="card edit-card">
+                <h3>Edit Player</h3>
+
+                <form onSubmit={savePlayerEdits} className="form-stack">
+                  <input
+                    className="input"
+                    placeholder="First Name"
+                    value={editForm.first_name}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, first_name: e.target.value })
+                    }
+                  />
+                  <input
+                    className="input"
+                    placeholder="Last Name"
+                    value={editForm.last_name}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, last_name: e.target.value })
+                    }
+                  />
+                  <input
+                    className="input"
+                    placeholder="Grade"
+                    value={editForm.grade}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, grade: e.target.value })
+                    }
+                  />
+                  <input
+                    className="input"
+                    placeholder="School"
+                    value={editForm.school}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, school: e.target.value })
+                    }
+                  />
+                  <input
+                    className="input"
+                    type="date"
+                    value={editForm.birth_date}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, birth_date: e.target.value })
+                    }
+                  />
+                  <input
+                    className="input"
+                    placeholder="Player Cell"
+                    value={editForm.player_phone}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, player_phone: e.target.value })
+                    }
+                  />
+                  <input
+                    className="input"
+                    placeholder="Parent Cell"
+                    value={editForm.parent_phone}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, parent_phone: e.target.value })
+                    }
+                  />
+                  <input
+                    className="input"
+                    placeholder="Parent Email"
+                    value={editForm.parent_email}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, parent_email: e.target.value })
+                    }
+                  />
+                  <textarea
+                    className="textarea"
+                    placeholder="Notes"
+                    value={editForm.notes}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, notes: e.target.value })
+                    }
+                  />
+
+                  <div className="edit-actions">
+                    <button type="submit" className="primary-button">
+                      Save Changes
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={cancelEditPlayer}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
           </div>
 
           <div className="card">
@@ -694,6 +879,25 @@ export default function App() {
                           </option>
                         ))}
                       </select>
+
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => startEditPlayer(player)}
+                      >
+                        Edit
+                      </button>
+
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => {
+                          setSelectedPlayerId(player.id);
+                          setTab("evaluations");
+                        }}
+                      >
+                        Evaluate
+                      </button>
                     </div>
                   </div>
                 </div>
