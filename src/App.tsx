@@ -3,10 +3,10 @@ import {
   useMemo,
   useState,
   type FormEvent,
-  type CSSProperties,
   type ReactNode,
 } from "react";
 import { supabase } from "./lib/supabase";
+import "./app.css";
 
 type TeamOption =
   | "15u Salute"
@@ -153,7 +153,7 @@ function ScoreSelect({
     <select
       value={value}
       onChange={(e) => onChange(Number(e.target.value))}
-      style={inputStyle}
+      className="select"
     >
       {[1, 2, 3, 4, 5].map((n) => (
         <option key={n} value={n}>
@@ -426,9 +426,7 @@ export default function App() {
       prev.map((p) => (p.id === player.id ? { ...p, suggested_team: team } : p))
     );
 
-    setStatus(
-      `${player.first_name} ${player.last_name} assigned to ${team}.`
-    );
+    setStatus(`${player.first_name} ${player.last_name} assigned to ${team}.`);
   }
 
   async function saveEvaluation(e: FormEvent<HTMLFormElement>) {
@@ -508,159 +506,124 @@ export default function App() {
   }
 
   return (
-    <div
-      style={{
-        padding: 32,
-        background: "#06153a",
-        minHeight: "100vh",
-        color: "white",
-        fontFamily: "Arial, sans-serif",
-      }}
-    >
-      <h1 style={{ fontSize: 60, marginBottom: 12 }}>Soldiers Try-Outs</h1>
-      <p style={{ fontSize: 18, marginBottom: 20 }}>{status}</p>
+    <div className="app-shell">
+      <div className="app-header">
+        <h1 className="app-title">Soldiers Try-Outs</h1>
+        <p className="app-status">{status}</p>
+      </div>
 
-      <div
-        style={{
-          display: "flex",
-          gap: 12,
-          marginBottom: 24,
-          flexWrap: "wrap",
-        }}
-      >
+      <div className="tab-row">
         <button
           type="button"
           onClick={() => setTab("attendance")}
-          style={{
-            ...buttonStyle,
-            background: tab === "attendance" ? "#15803d" : "#111111",
-          }}
+          className={`tab-button ${tab === "attendance" ? "active" : ""}`}
         >
           Attendance
         </button>
         <button
           type="button"
           onClick={() => setTab("evaluations")}
-          style={{
-            ...buttonStyle,
-            background: tab === "evaluations" ? "#15803d" : "#111111",
-          }}
+          className={`tab-button ${tab === "evaluations" ? "active" : ""}`}
         >
           Evaluations
         </button>
         <button
           type="button"
           onClick={() => setTab("rosters")}
-          style={{
-            ...buttonStyle,
-            background: tab === "rosters" ? "#15803d" : "#111111",
-          }}
+          className={`tab-button ${tab === "rosters" ? "active" : ""}`}
         >
           Rosters
         </button>
       </div>
 
       {tab === "attendance" ? (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1.2fr",
-            gap: 32,
-            alignItems: "start",
-          }}
-        >
-          <div>
-            <h2 style={{ fontSize: 34 }}>Onsite Registration</h2>
+        <div className="content-grid">
+          <div className="card">
+            <h2>Onsite Registration</h2>
 
-            <form onSubmit={addPlayer} style={{ display: "grid", gap: 12 }}>
+            <form onSubmit={addPlayer} className="form-stack">
               <input
+                className="input"
                 placeholder="First Name"
                 value={form.first_name}
                 onChange={(e) =>
                   setForm({ ...form, first_name: e.target.value })
                 }
-                style={inputStyle}
               />
               <input
+                className="input"
                 placeholder="Last Name"
                 value={form.last_name}
                 onChange={(e) =>
                   setForm({ ...form, last_name: e.target.value })
                 }
-                style={inputStyle}
               />
               <input
+                className="input"
                 placeholder="Grade"
                 value={form.grade}
                 onChange={(e) => setForm({ ...form, grade: e.target.value })}
-                style={inputStyle}
               />
               <input
+                className="input"
                 placeholder="School"
                 value={form.school}
                 onChange={(e) => setForm({ ...form, school: e.target.value })}
-                style={inputStyle}
               />
               <input
+                className="input"
                 type="date"
                 value={form.birth_date}
                 onChange={(e) =>
                   setForm({ ...form, birth_date: e.target.value })
                 }
-                style={inputStyle}
               />
               <input
+                className="input"
                 placeholder="Player Cell"
                 value={form.player_phone}
                 onChange={(e) =>
                   setForm({ ...form, player_phone: e.target.value })
                 }
-                style={inputStyle}
               />
               <input
+                className="input"
                 placeholder="Parent Cell"
                 value={form.parent_phone}
                 onChange={(e) =>
                   setForm({ ...form, parent_phone: e.target.value })
                 }
-                style={inputStyle}
               />
               <input
+                className="input"
                 placeholder="Parent Email"
                 value={form.parent_email}
                 onChange={(e) =>
                   setForm({ ...form, parent_email: e.target.value })
                 }
-                style={inputStyle}
               />
-              <button type="submit" style={buttonStyle}>
+
+              <button type="submit" className="primary-button">
                 Register Player
               </button>
             </form>
           </div>
 
-          <div>
-            <h2 style={{ fontSize: 34 }}>Players</h2>
+          <div className="card">
+            <h2>Players</h2>
 
-            <div
-              style={{
-                display: "flex",
-                gap: 12,
-                marginBottom: 16,
-                flexWrap: "wrap",
-              }}
-            >
+            <div className="toolbar-row">
               <input
+                className="input"
                 placeholder="Search player, school, phone, email"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                style={{ ...inputStyle, flex: 1, minWidth: 260 }}
               />
 
               <select
+                className="select group-select"
                 value={groupFilter}
                 onChange={(e) => setGroupFilter(e.target.value)}
-                style={{ ...inputStyle, width: 180 }}
               >
                 <option value="All">All</option>
                 <option value="High School">High School</option>
@@ -668,53 +631,40 @@ export default function App() {
               </select>
             </div>
 
-            <div style={{ display: "grid", gap: 14 }}>
+            <div className="player-list">
               {filteredPlayers.map((player) => (
-                <div key={player.id} style={cardStyle}>
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: 16,
-                      alignItems: "start",
-                    }}
-                  >
+                <div key={player.id} className="player-card">
+                  <div className="player-card-header">
                     <div>
-                      <div style={{ fontSize: 24, fontWeight: 700 }}>
+                      <div className="player-name">
                         {player.last_name}, {player.first_name}
                       </div>
-                      <div style={{ fontSize: 18, marginTop: 8 }}>
+                      <div className="player-meta">
                         {player.grade_group} • {player.grade}
                       </div>
-                      <div style={{ fontSize: 18, marginTop: 4 }}>
-                        {player.school}
-                      </div>
-                      <div style={{ fontSize: 18, marginTop: 10 }}>
+                      <div className="player-meta">{player.school}</div>
+                      <div className="player-contact">
                         Player: {player.player_phone || "-"}
                       </div>
-                      <div style={{ fontSize: 18, marginTop: 4 }}>
+                      <div className="player-contact">
                         Parent: {player.parent_phone || "-"}
                       </div>
-                      <div style={{ fontSize: 18, marginTop: 4 }}>
+                      <div className="player-contact">
                         Email: {player.parent_email || "-"}
                       </div>
                     </div>
 
-                    <div style={{ minWidth: 190 }}>
+                    <div className="player-actions">
                       <button
                         type="button"
                         onClick={() => toggleCheckIn(player)}
-                        style={{
-                          ...smallButton,
-                          background: player.checked_in ? "#15803d" : "#374151",
-                          marginBottom: 10,
-                          width: "100%",
-                        }}
+                        className="secondary-button"
                       >
                         {player.checked_in ? "Checked In" : "Mark Present"}
                       </button>
 
                       <select
+                        className="select"
                         value={player.suggested_team ?? "Undecided"}
                         onChange={(e) =>
                           updateSuggestedTeam(
@@ -722,7 +672,6 @@ export default function App() {
                             e.target.value as TeamOption
                           )
                         }
-                        style={{ ...inputStyle, width: "100%" }}
                       >
                         {TEAM_OPTIONS.map((team) => (
                           <option key={team} value={team}>
@@ -740,78 +689,56 @@ export default function App() {
           </div>
         </div>
       ) : tab === "evaluations" ? (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "340px 1fr",
-            gap: 24,
-            alignItems: "start",
-          }}
-        >
+        <div className="evaluation-grid">
           <div>
-            <h2 style={{ fontSize: 34 }}>Select Player</h2>
+            <div className="card">
+              <h2>Select Player</h2>
 
-            <div style={{ display: "grid", gap: 10 }}>
-              {players.map((player) => (
-                <button
-                  key={player.id}
-                  type="button"
-                  onClick={() => setSelectedPlayerId(player.id)}
-                  style={{
-                    ...smallButton,
-                    textAlign: "left",
-                    background:
-                      selectedPlayerId === player.id ? "#15803d" : "#111827",
-                    border: "1px solid #334155",
-                  }}
-                >
-                  <div style={{ fontWeight: 700 }}>
-                    {player.last_name}, {player.first_name}
-                  </div>
-                  <div>
-                    {player.grade_group} • {player.grade}
-                  </div>
-                </button>
-              ))}
+              <div className="player-list">
+                {players.map((player) => (
+                  <button
+                    key={player.id}
+                    type="button"
+                    onClick={() => setSelectedPlayerId(player.id)}
+                    className={`player-select-button ${
+                      selectedPlayerId === player.id ? "active" : ""
+                    }`}
+                  >
+                    <div className="player-select-name">
+                      {player.last_name}, {player.first_name}
+                    </div>
+                    <div>
+                      {player.grade_group} • {player.grade}
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <div style={{ marginTop: 24, ...cardStyle }}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: 12,
-                }}
-              >
-                <h3 style={{ fontSize: 24, margin: 0 }}>Evaluation History</h3>
+            <div className="card history-card">
+              <div className="history-header">
+                <h3>Evaluation History</h3>
                 <button
                   type="button"
                   onClick={startNewEvaluation}
-                  style={smallButton}
+                  className="secondary-button"
                 >
                   New Evaluation
                 </button>
               </div>
 
-              <div style={{ display: "grid", gap: 10 }}>
+              <div className="history-list">
                 {playerEvaluations.length === 0 ? (
-                  <div style={{ color: "#cbd5e1" }}>No evaluations yet.</div>
+                  <div className="empty-text">No evaluations yet.</div>
                 ) : (
                   playerEvaluations.map((evaluation) => (
                     <button
                       key={evaluation.id}
                       type="button"
                       onClick={() => loadEvaluationIntoForm(evaluation)}
-                      style={{
-                        ...smallButton,
-                        textAlign: "left",
-                        background:
-                          editingEvaluationId === evaluation.id
-                            ? "#15803d"
-                            : "#111827",
-                        border: "1px solid #334155",
-                      }}
+                      className={`history-button ${
+                        editingEvaluationId === evaluation.id ? "active" : ""
+                      }`}
                     >
                       <div>
                         Evaluator: {evaluation.evaluator || "Unknown"}
@@ -827,8 +754,8 @@ export default function App() {
             </div>
           </div>
 
-          <div>
-            <h2 style={{ fontSize: 34 }}>
+          <div className="card">
+            <h2>
               Evaluation{" "}
               {selectedPlayer
                 ? `- ${selectedPlayer.first_name} ${selectedPlayer.last_name}`
@@ -836,20 +763,21 @@ export default function App() {
             </h2>
 
             {selectedPlayer ? (
-              <form onSubmit={saveEvaluation} style={{ display: "grid", gap: 18 }}>
-                <div style={cardStyle}>
-                  <label style={labelStyle}>Evaluator</label>
+              <form onSubmit={saveEvaluation} className="form-stack">
+                <div className="card sub-card">
+                  <label className="field-label">Evaluator</label>
                   <input
+                    className="input"
                     value={evalForm.evaluator}
                     onChange={(e) =>
                       setEvalForm({ ...evalForm, evaluator: e.target.value })
                     }
-                    style={inputStyle}
                     placeholder="Coach name"
                   />
 
-                  <label style={labelStyle}>Suggested Team</label>
+                  <label className="field-label">Suggested Team</label>
                   <select
+                    className="select"
                     value={evalForm.suggested_team}
                     onChange={(e) =>
                       setEvalForm({
@@ -857,7 +785,6 @@ export default function App() {
                         suggested_team: e.target.value as TeamOption,
                       })
                     }
-                    style={inputStyle}
                   >
                     {TEAM_OPTIONS.map((team) => (
                       <option key={team} value={team}>
@@ -866,13 +793,13 @@ export default function App() {
                     ))}
                   </select>
 
-                  <div style={{ marginTop: 10, fontSize: 22, fontWeight: 700 }}>
+                  <div className="score-total">
                     Total Score: {totalScore(evalForm)} / 65
                   </div>
                 </div>
 
-                <div style={cardStyle}>
-                  <h3 style={sectionTitle}>Physical Attributes</h3>
+                <div className="card sub-card">
+                  <h3 className="section-title">Physical Attributes</h3>
                   <EvalRow
                     label="Speed/Quickness"
                     control={
@@ -908,8 +835,8 @@ export default function App() {
                   />
                 </div>
 
-                <div style={cardStyle}>
-                  <h3 style={sectionTitle}>Skill Evaluation</h3>
+                <div className="card sub-card">
+                  <h3 className="section-title">Skill Evaluation</h3>
                   <EvalRow
                     label="Ball Handling"
                     control={
@@ -995,8 +922,8 @@ export default function App() {
                   />
                 </div>
 
-                <div style={cardStyle}>
-                  <h3 style={sectionTitle}>Basketball IQ & Intangibles</h3>
+                <div className="card sub-card">
+                  <h3 className="section-title">Basketball IQ & Intangibles</h3>
                   <EvalRow
                     label="Offensive Knowledge/Spacing"
                     control={
@@ -1038,9 +965,10 @@ export default function App() {
                   />
                 </div>
 
-                <div style={cardStyle}>
-                  <h3 style={sectionTitle}>General Notes</h3>
+                <div className="card sub-card">
+                  <h3 className="section-title">General Notes</h3>
                   <textarea
+                    className="textarea"
                     value={evalForm.general_notes}
                     onChange={(e) =>
                       setEvalForm({
@@ -1048,19 +976,18 @@ export default function App() {
                         general_notes: e.target.value,
                       })
                     }
-                    style={{ ...inputStyle, minHeight: 120, resize: "vertical" }}
                     placeholder="Add strengths, concerns, fit, upside, and notes..."
                   />
                 </div>
 
-                <div style={{ fontSize: 18, fontWeight: 700 }}>
+                <div className="mode-text">
                   Mode:{" "}
                   {editingEvaluationId
                     ? "Editing Existing Evaluation"
                     : "New Evaluation"}
                 </div>
 
-                <button type="submit" style={buttonStyle}>
+                <button type="submit" className="primary-button">
                   Save Evaluation
                 </button>
               </form>
@@ -1071,51 +998,35 @@ export default function App() {
         </div>
       ) : (
         <div>
-          <h2 style={{ fontSize: 34, marginBottom: 16 }}>Rosters</h2>
+          <h2 className="roster-title">Rosters</h2>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, 1fr)",
-              gap: 18,
-            }}
-          >
+          <div className="roster-grid">
             {TEAM_OPTIONS.map((team) => (
-              <div key={team} style={cardStyle}>
-                <div style={{ fontSize: 26, fontWeight: 700, marginBottom: 10 }}>
-                  {team}
-                </div>
-                <div style={{ marginBottom: 14, fontSize: 18 }}>
+              <div key={team} className="card">
+                <div className="roster-team-title">{team}</div>
+                <div className="roster-count">
                   Count: {rosterGroups[team].length}
                 </div>
 
-                <div style={{ display: "grid", gap: 10 }}>
+                <div className="roster-list">
                   {rosterGroups[team].length === 0 ? (
-                    <div style={{ color: "#cbd5e1" }}>No players assigned.</div>
+                    <div className="empty-text">No players assigned.</div>
                   ) : (
                     rosterGroups[team].map((player) => {
                       const latest = latestEvalMap.get(player.id);
                       return (
-                        <div
-                          key={player.id}
-                          style={{
-                            border: "1px solid #334155",
-                            borderRadius: 14,
-                            padding: 12,
-                            background: "#0b1c44",
-                          }}
-                        >
-                          <div style={{ fontWeight: 700, fontSize: 18 }}>
+                        <div key={player.id} className="roster-player-card">
+                          <div className="roster-player-name">
                             {player.last_name}, {player.first_name}
                           </div>
-                          <div style={{ marginTop: 4 }}>
+                          <div>
                             {player.grade_group} • {player.grade}
                           </div>
-                          <div style={{ marginTop: 4 }}>{player.school}</div>
-                          <div style={{ marginTop: 8 }}>
+                          <div>{player.school}</div>
+                          <div className="roster-player-meta">
                             Latest Eval Score: {latest?.total_score ?? "-"} / 65
                           </div>
-                          <div style={{ marginTop: 4 }}>
+                          <div className="roster-player-meta">
                             Checked In: {player.checked_in ? "Yes" : "No"}
                           </div>
                         </div>
@@ -1140,66 +1051,9 @@ function EvalRow({
   control: ReactNode;
 }) {
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "1fr 120px",
-        gap: 14,
-        alignItems: "center",
-        marginBottom: 12,
-      }}
-    >
-      <div style={{ fontSize: 18 }}>{label}</div>
+    <div className="eval-row">
+      <div>{label}</div>
       <div>{control}</div>
     </div>
   );
 }
-
-const labelStyle: CSSProperties = {
-  display: "block",
-  marginBottom: 8,
-  marginTop: 6,
-  fontSize: 18,
-  fontWeight: 600,
-};
-
-const sectionTitle: CSSProperties = {
-  fontSize: 24,
-  marginBottom: 16,
-};
-
-const inputStyle: CSSProperties = {
-  padding: "14px 16px",
-  borderRadius: 8,
-  border: "1px solid #6b7280",
-  background: "#3f3f46",
-  color: "white",
-  fontSize: 16,
-  width: "100%",
-};
-
-const buttonStyle: CSSProperties = {
-  padding: "16px 18px",
-  borderRadius: 16,
-  border: "none",
-  background: "#111111",
-  color: "white",
-  fontSize: 18,
-  cursor: "pointer",
-};
-
-const smallButton: CSSProperties = {
-  padding: "12px 14px",
-  borderRadius: 10,
-  border: "none",
-  color: "white",
-  fontSize: 16,
-  cursor: "pointer",
-};
-
-const cardStyle: CSSProperties = {
-  border: "1px solid #334155",
-  padding: 18,
-  borderRadius: 20,
-  background: "#081735",
-};
