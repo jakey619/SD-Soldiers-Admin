@@ -292,6 +292,11 @@ textarea {
   gap: 18px;
 }
 
+.roster-focus-card {
+  display: grid;
+  gap: 16px;
+}
+
 .rosters-toolbar {
   display: flex;
   justify-content: space-between;
@@ -304,6 +309,30 @@ textarea {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.roster-focus-actions,
+.roster-focus-summary,
+.document-status-row,
+.roster-card-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.roster-focus-summary {
+  color: #dbeafe;
+  font-size: 15px;
+}
+
+.roster-focus-list {
+  display: grid;
+  gap: 12px;
+}
+
+.roster-team-select {
+  max-width: 260px;
 }
 
 .team-stats-grid {
@@ -618,6 +647,11 @@ textarea {
   gap: 6px;
 }
 
+.detail-inline-status {
+  display: inline-flex;
+  margin-left: 10px;
+}
+
 .selected-player-buttons,
 .selected-actions {
   display: flex;
@@ -695,6 +729,10 @@ textarea {
   border-radius: 16px;
   padding: 12px;
   background: rgba(11, 28, 68, 0.94);
+}
+
+.roster-player-card-wide {
+  padding: 16px;
 }
 
 .roster-player-top {
@@ -790,6 +828,11 @@ textarea {
   gap: 10px;
 }
 
+.document-picker {
+  display: grid;
+  gap: 8px;
+}
+
 .photo-divider {
   text-align: center;
   color: #bfdbfe;
@@ -840,6 +883,43 @@ textarea {
 
 .existing-photo-wrap {
   margin-top: 8px;
+}
+
+.document-link,
+.document-status-link {
+  color: #93c5fd;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.document-link:hover,
+.document-status-link:hover {
+  text-decoration: underline;
+}
+
+.document-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  color: #cbd5e1;
+}
+
+.document-status.available {
+  color: #e2e8f0;
+  border-color: rgba(96, 165, 250, 0.35);
+}
+
+.document-status input {
+  margin: 0;
+}
+
+.document-status-row.compact .document-status {
+  padding: 6px 8px;
+  font-size: 13px;
 }
 
 .evaluation-modal-grid {
@@ -941,6 +1021,14 @@ textarea {
   .history-header,
   .card-header-row,
   .rosters-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .roster-focus-actions,
+  .roster-focus-summary,
+  .document-status-row,
+  .roster-card-actions {
     flex-direction: column;
     align-items: stretch;
   }

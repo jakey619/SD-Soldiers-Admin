@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { supabase } from "./lib/supabase";
-import { uploadPlayerPhoto } from "./lib/playerPhotos";
+import { uploadPlayerDocument, uploadPlayerPhoto } from "./lib/playerPhotos";
 import soldiersLogo from "./assets/soldiers-logo.png";
 import "./app.css";
 
@@ -19,6 +19,12 @@ type TeamOption =
   | "16u Honor"
   | "17u Salute"
   | "17u Honor"
+  | "2030 Salute"
+  | "2030 Honor"
+  | "2031 Salute"
+  | "2031 Honor"
+  | "2032 Salute"
+  | "2032 Honor"
   | "Undecided";
 
 type MainTab = "attendance" | "door" | "rosters";
@@ -38,6 +44,7 @@ type Player = {
   grade_group: string | null;
   school: string | null;
   birth_date: string | null;
+  jersey_number: string | null;
   player_phone: string | null;
   parent_phone: string | null;
   parent_email: string | null;
@@ -46,6 +53,8 @@ type Player = {
   suggested_team: TeamOption | null;
   notes: string | null;
   photo_url?: string | null;
+  birth_certificate_url?: string | null;
+  report_card_url?: string | null;
 };
 
 type LatestEvaluation = {
@@ -116,6 +125,12 @@ const TEAM_OPTIONS: TeamOption[] = [
   "16u Honor",
   "17u Salute",
   "17u Honor",
+  "2030 Salute",
+  "2030 Honor",
+  "2031 Salute",
+  "2031 Honor",
+  "2032 Salute",
+  "2032 Honor",
   "Undecided",
 ];
 
@@ -134,6 +149,49 @@ function groupFromGrade(grade: string) {
   const n = parseInt(grade, 10);
   if (!Number.isFinite(n)) return "High School";
   return n <= 8 ? "Middle School" : "High School";
+}
+
+function calculateAge(birthDate: string | null) {
+  if (!birthDate) return null;
+
+  const date = new Date(`${birthDate}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const today = new Date();
+  let age = today.getFullYear() - date.getFullYear();
+  const hasHadBirthday =
+    today.getMonth() > date.getMonth() ||
+    (today.getMonth() === date.getMonth() && today.getDate() >= date.getDate());
+
+  if (!hasHadBirthday) {
+    age -= 1;
+  }
+
+  return age >= 0 ? age : null;
+}
+
+function formatBirthDate(birthDate: string | null) {
+  if (!birthDate) return "-";
+
+  const date = new Date(`${birthDate}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return birthDate;
+
+  return date.toLocaleDateString();
+}
+
+function createEmptyPlayerForm(suggestedTeam: TeamOption = "Undecided") {
+  return {
+    first_name: "",
+    last_name: "",
+    grade: "",
+    school: "",
+    birth_date: "",
+    jersey_number: "",
+    player_phone: "",
+    parent_phone: "",
+    parent_email: "",
+    suggested_team: suggestedTeam,
+  };
 }
 
 function initialEvalForm(): EvalForm {
@@ -418,6 +476,62 @@ function PhotoPicker({
   );
 }
 
+function DocumentPicker({
+  label,
+  accept = ".pdf,image/*",
+  onFileReady,
+  currentUrl,
+}: {
+  label: string;
+  accept?: string;
+  onFileReady: (file: File | null) => void;
+  currentUrl?: string | null;
+}) {
+  function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null;
+    onFileReady(file);
+  }
+
+  return (
+    <div className="document-picker">
+      <label className="field-label">{label}</label>
+      <input className="input" type="file" accept={accept} onChange={handleFileChange} />
+      {currentUrl && (
+        <a
+          className="document-link"
+          href={currentUrl}
+          target="_blank"
+          rel="noreferrer"
+        >
+          View current {label.toLowerCase()}
+        </a>
+      )}
+    </div>
+  );
+}
+
+function DocumentStatus({
+  label,
+  url,
+}: {
+  label: string;
+  url?: string | null;
+}) {
+  const isAvailable = Boolean(url);
+
+  return (
+    <div className={`document-status ${isAvailable ? "available" : ""}`}>
+      <input type="checkbox" checked={isAvailable} readOnly disabled />
+      <span>{label}</span>
+      {url && (
+        <a href={url} target="_blank" rel="noreferrer" className="document-status-link">
+          View
+        </a>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [latestEvaluations, setLatestEvaluations] = useState<LatestEvaluation[]>([]);
@@ -429,6 +543,8 @@ export default function App() {
   const [attendanceFilter, setAttendanceFilter] = useState<AttendanceFilter>("all");
   const [tab, setTab] = useState<MainTab>("attendance");
   const [selectedPlayerId, setSelectedPlayerId] = useState<string>("");
+  const [activeRosterTeam, setActiveRosterTeam] = useState<TeamOption>("15u Salute");
+  const [rosterAddPlayerId, setRosterAddPlayerId] = useState("");
 
   const [isRegistrationOpen, setIsRegistrationOpen] = useState(false);
   const [isEvaluationOpen, setIsEvaluationOpen] = useState(false);
@@ -438,30 +554,21 @@ export default function App() {
   const [editingPlayerId, setEditingPlayerId] = useState<string | null>(null);
   const [evalForm, setEvalForm] = useState<EvalForm>(initialEvalForm());
 
-  const [form, setForm] = useState({
-    first_name: "",
-    last_name: "",
-    grade: "",
-    school: "",
-    birth_date: "",
-    player_phone: "",
-    parent_phone: "",
-    parent_email: "",
-  });
+  const [form, setForm] = useState(createEmptyPlayerForm());
   const [registrationPhotoFile, setRegistrationPhotoFile] = useState<File | null>(null);
+  const [registrationBirthCertificateFile, setRegistrationBirthCertificateFile] =
+    useState<File | null>(null);
+  const [registrationReportCardFile, setRegistrationReportCardFile] =
+    useState<File | null>(null);
 
   const [editForm, setEditForm] = useState({
-    first_name: "",
-    last_name: "",
-    grade: "",
-    school: "",
-    birth_date: "",
-    player_phone: "",
-    parent_phone: "",
-    parent_email: "",
+    ...createEmptyPlayerForm(),
     notes: "",
   });
   const [editPhotoFile, setEditPhotoFile] = useState<File | null>(null);
+  const [editBirthCertificateFile, setEditBirthCertificateFile] =
+    useState<File | null>(null);
+  const [editReportCardFile, setEditReportCardFile] = useState<File | null>(null);
 
   const selectedPlayer = players.find((p) => p.id === selectedPlayerId) ?? null;
 
@@ -542,7 +649,7 @@ export default function App() {
       const isEvaluated = Boolean(latest);
 
       const text =
-        `${player.first_name ?? ""} ${player.last_name ?? ""} ${player.school ?? ""} ${player.parent_phone ?? ""} ${player.parent_email ?? ""}`.toLowerCase();
+        `${player.first_name ?? ""} ${player.last_name ?? ""} ${player.school ?? ""} ${player.parent_phone ?? ""} ${player.parent_email ?? ""} ${player.jersey_number ?? ""}`.toLowerCase();
 
       const matchesSearch = text.includes(search.toLowerCase());
       const matchesGroup =
@@ -575,7 +682,7 @@ export default function App() {
     return players
       .filter((player) => {
         const text =
-          `${player.first_name ?? ""} ${player.last_name ?? ""} ${player.school ?? ""}`.toLowerCase();
+          `${player.first_name ?? ""} ${player.last_name ?? ""} ${player.school ?? ""} ${player.jersey_number ?? ""}`.toLowerCase();
         return text.includes(term);
       })
       .sort((a, b) =>
@@ -593,6 +700,12 @@ export default function App() {
       "16u Honor": [],
       "17u Salute": [],
       "17u Honor": [],
+      "2030 Salute": [],
+      "2030 Honor": [],
+      "2031 Salute": [],
+      "2031 Honor": [],
+      "2032 Salute": [],
+      "2032 Honor": [],
       Undecided: [],
     };
 
@@ -614,6 +727,18 @@ export default function App() {
 
     return groups;
   }, [players, latestEvalMap]);
+
+  const activeRosterPlayers = rosterGroups[activeRosterTeam] ?? [];
+
+  const rosterAssignablePlayers = useMemo(() => {
+    return [...players]
+      .filter((player) => (player.suggested_team ?? "Undecided") !== activeRosterTeam)
+      .sort((a, b) =>
+        `${a.last_name ?? ""} ${a.first_name ?? ""}`.localeCompare(
+          `${b.last_name ?? ""} ${b.first_name ?? ""}`
+        )
+      );
+  }, [players, activeRosterTeam, rosterAddPlayerId]);
 
   const checkedInCount = useMemo(
     () => players.filter((p) => p.checked_in).length,
@@ -659,6 +784,9 @@ export default function App() {
         "Grade Group",
         "Grade",
         "School",
+        "Jersey Number",
+        "Birthdate",
+        "Age",
         "Checked In",
         "Suggested Team",
         "Latest Score",
@@ -666,6 +794,8 @@ export default function App() {
         "Player Phone",
         "Parent Phone",
         "Parent Email",
+        "Birth Certificate",
+        "Report Card",
         "Notes",
         "Photo URL",
       ],
@@ -685,6 +815,9 @@ export default function App() {
         player.grade_group ?? "",
         player.grade ?? "",
         player.school ?? "",
+        player.jersey_number ?? "",
+        player.birth_date ?? "",
+        calculateAge(player.birth_date)?.toString() ?? "",
         player.checked_in ? "Yes" : "No",
         player.suggested_team ?? "Undecided",
         latest?.total_score?.toString() ?? "",
@@ -692,6 +825,8 @@ export default function App() {
         player.player_phone ?? "",
         player.parent_phone ?? "",
         player.parent_email ?? "",
+        player.birth_certificate_url ? "Yes" : "No",
+        player.report_card_url ? "Yes" : "No",
         player.notes ?? "",
         player.photo_url ?? "",
       ]);
@@ -710,12 +845,17 @@ export default function App() {
         "Grade Group",
         "Grade",
         "School",
+        "Jersey Number",
+        "Birthdate",
+        "Age",
         "Checked In",
         "Latest Score",
         "Evaluator",
         "Player Phone",
         "Parent Phone",
         "Parent Email",
+        "Birth Certificate",
+        "Report Card",
       ],
     ];
 
@@ -729,12 +869,17 @@ export default function App() {
           player.grade_group ?? "",
           player.grade ?? "",
           player.school ?? "",
+          player.jersey_number ?? "",
+          player.birth_date ?? "",
+          calculateAge(player.birth_date)?.toString() ?? "",
           player.checked_in ? "Yes" : "No",
           latest?.total_score?.toString() ?? "",
           latest?.evaluator ?? "",
           player.player_phone ?? "",
           player.parent_phone ?? "",
           player.parent_email ?? "",
+          player.birth_certificate_url ? "Yes" : "No",
+          player.report_card_url ? "Yes" : "No",
         ]);
       });
     });
@@ -743,18 +888,11 @@ export default function App() {
     setStatus("Exported soldiers-rosters.csv");
   }
 
-  function openRegistrationModal() {
-    setForm({
-      first_name: "",
-      last_name: "",
-      grade: "",
-      school: "",
-      birth_date: "",
-      player_phone: "",
-      parent_phone: "",
-      parent_email: "",
-    });
+  function openRegistrationModal(suggestedTeam: TeamOption = "Undecided") {
+    setForm(createEmptyPlayerForm(suggestedTeam));
     setRegistrationPhotoFile(null);
+    setRegistrationBirthCertificateFile(null);
+    setRegistrationReportCardFile(null);
     setIsRegistrationOpen(true);
   }
 
@@ -827,12 +965,16 @@ export default function App() {
       grade: player.grade ?? "",
       school: player.school ?? "",
       birth_date: player.birth_date ?? "",
+      jersey_number: player.jersey_number ?? "",
       player_phone: player.player_phone ?? "",
       parent_phone: player.parent_phone ?? "",
       parent_email: player.parent_email ?? "",
+      suggested_team: player.suggested_team ?? "Undecided",
       notes: player.notes ?? "",
     });
     setEditPhotoFile(null);
+    setEditBirthCertificateFile(null);
+    setEditReportCardFile(null);
     setIsEditOpen(true);
     setStatus(`Editing ${player.first_name} ${player.last_name}.`);
   }
@@ -841,7 +983,70 @@ export default function App() {
     setIsEditOpen(false);
     setEditingPlayerId(null);
     setEditPhotoFile(null);
+    setEditBirthCertificateFile(null);
+    setEditReportCardFile(null);
     setStatus("Edit cancelled.");
+  }
+
+  async function uploadPlayerAssets(
+    playerId: string,
+    currentPlayer: Player | null,
+    assets: {
+      photoFile?: File | null;
+      birthCertificateFile?: File | null;
+      reportCardFile?: File | null;
+    }
+  ) {
+    const payload: Partial<Player> = {};
+    const errors: string[] = [];
+
+    payload.photo_url = currentPlayer?.photo_url ?? null;
+    payload.birth_certificate_url = currentPlayer?.birth_certificate_url ?? null;
+    payload.report_card_url = currentPlayer?.report_card_url ?? null;
+
+    if (assets.photoFile) {
+      try {
+        payload.photo_url = await uploadPlayerPhoto(assets.photoFile, playerId);
+      } catch (error) {
+        errors.push(
+          error instanceof Error ? `Photo: ${error.message}` : "Photo upload failed."
+        );
+      }
+    }
+
+    if (assets.birthCertificateFile) {
+      try {
+        payload.birth_certificate_url = await uploadPlayerDocument(
+          assets.birthCertificateFile,
+          playerId,
+          "birth-certificate"
+        );
+      } catch (error) {
+        errors.push(
+          error instanceof Error
+            ? `Birth certificate: ${error.message}`
+            : "Birth certificate upload failed."
+        );
+      }
+    }
+
+    if (assets.reportCardFile) {
+      try {
+        payload.report_card_url = await uploadPlayerDocument(
+          assets.reportCardFile,
+          playerId,
+          "report-card"
+        );
+      } catch (error) {
+        errors.push(
+          error instanceof Error
+            ? `Report card: ${error.message}`
+            : "Report card upload failed."
+        );
+      }
+    }
+
+    return { payload, errors };
   }
 
   async function addPlayer(e: FormEvent<HTMLFormElement>) {
@@ -857,11 +1062,12 @@ export default function App() {
           grade_group: groupFromGrade(form.grade),
           school: form.school || null,
           birth_date: form.birth_date || null,
+          jersey_number: form.jersey_number || null,
           player_phone: form.player_phone || null,
           parent_phone: form.parent_phone || null,
           parent_email: form.parent_email || null,
           checked_in: true,
-          suggested_team: "Undecided",
+          suggested_team: form.suggested_team,
           notes: "Onsite registration",
         },
       ])
@@ -873,30 +1079,39 @@ export default function App() {
       return;
     }
 
-    if (registrationPhotoFile) {
-      try {
-        const photoUrl = await uploadPlayerPhoto(registrationPhotoFile, data.id);
-        const { error: photoUpdateError } = await supabase
-          .from("players")
-          .update({ photo_url: photoUrl })
-          .eq("id", data.id);
+    const { payload: assetPayload, errors: assetErrors } = await uploadPlayerAssets(
+      data.id,
+      null,
+      {
+        photoFile: registrationPhotoFile,
+        birthCertificateFile: registrationBirthCertificateFile,
+        reportCardFile: registrationReportCardFile,
+      }
+    );
 
-        if (photoUpdateError) {
-          setStatus(
-            `Player created, but photo save failed: ${photoUpdateError.message}`
-          );
-        }
-      } catch (photoError) {
-        const message =
-          photoError instanceof Error ? photoError.message : "Photo upload failed.";
-        setStatus(`Player created, but photo upload failed: ${message}`);
+    if (
+      registrationPhotoFile ||
+      registrationBirthCertificateFile ||
+      registrationReportCardFile
+    ) {
+      const { error: assetUpdateError } = await supabase
+        .from("players")
+        .update(assetPayload)
+        .eq("id", data.id);
+
+      if (assetUpdateError) {
+        assetErrors.push(assetUpdateError.message);
       }
     }
 
     closeRegistrationModal();
     await refreshAll();
     setSelectedPlayerId(data.id);
-    setStatus("Player registered successfully.");
+    setStatus(
+      assetErrors.length > 0
+        ? `Player registered. Upload issues: ${assetErrors.join(" ")}`
+        : "Player registered successfully."
+    );
   }
 
   async function savePlayerEdits(e: FormEvent<HTMLFormElement>) {
@@ -905,18 +1120,6 @@ export default function App() {
     if (!editingPlayerId) return;
 
     const currentPlayer = players.find((p) => p.id === editingPlayerId) ?? null;
-    let photoUrl = currentPlayer?.photo_url ?? null;
-
-    if (editPhotoFile) {
-      try {
-        photoUrl = await uploadPlayerPhoto(editPhotoFile, editingPlayerId);
-      } catch (photoError) {
-        const message =
-          photoError instanceof Error ? photoError.message : "Photo upload failed.";
-        setStatus(`Edit error: ${message}`);
-        return;
-      }
-    }
 
     const payload = {
       first_name: editForm.first_name,
@@ -925,16 +1128,35 @@ export default function App() {
       grade_group: groupFromGrade(editForm.grade),
       school: editForm.school || null,
       birth_date: editForm.birth_date || null,
+      jersey_number: editForm.jersey_number || null,
       player_phone: editForm.player_phone || null,
       parent_phone: editForm.parent_phone || null,
       parent_email: editForm.parent_email || null,
+      suggested_team: editForm.suggested_team,
       notes: editForm.notes || null,
-      photo_url: photoUrl,
+      photo_url: currentPlayer?.photo_url ?? null,
+    };
+
+    const { payload: assetPayload, errors: assetErrors } = await uploadPlayerAssets(
+      editingPlayerId,
+      currentPlayer,
+      {
+        photoFile: editPhotoFile,
+        birthCertificateFile: editBirthCertificateFile,
+        reportCardFile: editReportCardFile,
+      }
+    );
+
+    payload.photo_url = assetPayload.photo_url ?? currentPlayer?.photo_url ?? null;
+    const fullPayload = {
+      ...payload,
+      birth_certificate_url: assetPayload.birth_certificate_url ?? null,
+      report_card_url: assetPayload.report_card_url ?? null,
     };
 
     const { error } = await supabase
       .from("players")
-      .update(payload)
+      .update(fullPayload)
       .eq("id", editingPlayerId);
 
     if (error) {
@@ -943,13 +1165,19 @@ export default function App() {
     }
 
     setPlayers((prev) =>
-      prev.map((p) => (p.id === editingPlayerId ? { ...p, ...payload } : p))
+      prev.map((p) => (p.id === editingPlayerId ? { ...p, ...fullPayload } : p))
     );
 
     setIsEditOpen(false);
     setEditingPlayerId(null);
     setEditPhotoFile(null);
-    setStatus("Player info updated.");
+    setEditBirthCertificateFile(null);
+    setEditReportCardFile(null);
+    setStatus(
+      assetErrors.length > 0
+        ? `Player updated with upload issues: ${assetErrors.join(" ")}`
+        : "Player info updated."
+    );
   }
 
   async function toggleCheckIn(player: Player) {
@@ -992,6 +1220,22 @@ export default function App() {
     );
 
     setStatus(`${player.first_name} ${player.last_name} assigned to ${team}.`);
+  }
+
+  async function addPlayerToRoster() {
+    if (!rosterAddPlayerId) {
+      setStatus("Select a player to add to the roster.");
+      return;
+    }
+
+    const player = players.find((entry) => entry.id === rosterAddPlayerId);
+    if (!player) {
+      setStatus("Selected player was not found.");
+      return;
+    }
+
+    await updateSuggestedTeam(player, activeRosterTeam);
+    setRosterAddPlayerId("");
   }
 
   async function saveEvaluation(e: FormEvent<HTMLFormElement>) {
@@ -1141,7 +1385,7 @@ export default function App() {
               <button
                 type="button"
                 className="primary-button"
-                onClick={openRegistrationModal}
+                onClick={() => openRegistrationModal()}
               >
                 New Registration
               </button>
@@ -1204,6 +1448,10 @@ export default function App() {
                       <div className="checkin-row-meta">
                         {player.grade_group} • {player.grade} • {player.school}
                       </div>
+                      <div className="checkin-row-meta">
+                        Jersey #{player.jersey_number || "-"} | Age{" "}
+                        {calculateAge(player.birth_date) ?? "-"}
+                      </div>
                       <div className="badge-row">
                         <span
                           className={`badge ${
@@ -1219,6 +1467,16 @@ export default function App() {
                         >
                           {latest ? "Evaluated" : "Not Evaluated"}
                         </span>
+                      </div>
+                      <div className="document-status-row compact">
+                        <DocumentStatus
+                          label="Birth Cert"
+                          url={player.birth_certificate_url}
+                        />
+                        <DocumentStatus
+                          label="Report Card"
+                          url={player.report_card_url}
+                        />
                       </div>
                     </div>
                   </button>
@@ -1269,6 +1527,11 @@ export default function App() {
                       {selectedPlayer.grade_group} • {selectedPlayer.grade}
                     </div>
                     <div className="player-meta">{selectedPlayer.school}</div>
+                    <div className="player-meta">
+                      Jersey #{selectedPlayer.jersey_number || "-"} | Birthdate{" "}
+                      {formatBirthDate(selectedPlayer.birth_date)} | Age{" "}
+                      {calculateAge(selectedPlayer.birth_date) ?? "-"}
+                    </div>
 
                     <div className="badge-row">
                       <span
@@ -1314,6 +1577,24 @@ export default function App() {
                 </div>
 
                 <div className="selected-player-details">
+                  <div className="detail-line">
+                    <strong>Birth Certificate:</strong>
+                    <span className="detail-inline-status">
+                      <DocumentStatus
+                        label="On File"
+                        url={selectedPlayer.birth_certificate_url}
+                      />
+                    </span>
+                  </div>
+                  <div className="detail-line">
+                    <strong>Report Card:</strong>
+                    <span className="detail-inline-status">
+                      <DocumentStatus
+                        label="On File"
+                        url={selectedPlayer.report_card_url}
+                      />
+                    </span>
+                  </div>
                   <div className="detail-line">
                     <strong>Player Cell:</strong> {selectedPlayer.player_phone || "-"}
                   </div>
@@ -1368,7 +1649,7 @@ export default function App() {
               <button
                 type="button"
                 className="primary-button"
-                onClick={openRegistrationModal}
+                onClick={() => openRegistrationModal()}
               >
                 New Registration
               </button>
@@ -1395,6 +1676,10 @@ export default function App() {
                       </div>
                       <div className="door-meta">
                         {player.grade_group} • {player.grade} • {player.school}
+                      </div>
+                      <div className="door-meta">
+                        Jersey #{player.jersey_number || "-"} | Age{" "}
+                        {calculateAge(player.birth_date) ?? "-"}
                       </div>
                     </div>
                   </div>
@@ -1451,6 +1736,131 @@ export default function App() {
             ))}
           </div>
 
+          <div className="card roster-focus-card">
+            <div className="card-header-row">
+              <h3>{activeRosterTeam} Roster</h3>
+              <select
+                className="select roster-team-select"
+                value={activeRosterTeam}
+                onChange={(e) => setActiveRosterTeam(e.target.value as TeamOption)}
+              >
+                {TEAM_OPTIONS.map((team) => (
+                  <option key={team} value={team}>
+                    {team}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="roster-focus-actions">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => openRegistrationModal(activeRosterTeam)}
+              >
+                Add New Player To {activeRosterTeam}
+              </button>
+              <select
+                className="select"
+                value={rosterAddPlayerId}
+                onChange={(e) => setRosterAddPlayerId(e.target.value)}
+              >
+                <option value="">Add existing player to this roster</option>
+                {rosterAssignablePlayers.map((player) => (
+                  <option key={player.id} value={player.id}>
+                    {player.last_name}, {player.first_name} ({player.suggested_team ?? "Undecided"})
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="primary-button"
+                onClick={addPlayerToRoster}
+              >
+                Add To {activeRosterTeam}
+              </button>
+            </div>
+
+            <div className="roster-focus-summary">
+              <span>Players: {activeRosterPlayers.length}</span>
+              <span>
+                Checked In: {activeRosterPlayers.filter((player) => player.checked_in).length}
+              </span>
+              <span>
+                Evaluated:{" "}
+                {activeRosterPlayers.filter((player) => latestEvalMap.has(player.id)).length}
+              </span>
+            </div>
+
+            <div className="roster-focus-list">
+              {activeRosterPlayers.length === 0 ? (
+                <div className="empty-text">No players assigned to this roster yet.</div>
+              ) : (
+                activeRosterPlayers.map((player) => {
+                  const latest = latestEvalMap.get(player.id);
+
+                  return (
+                    <div key={player.id} className="roster-player-card roster-player-card-wide">
+                      <div className="roster-player-top">
+                        <PlayerPhoto
+                          src={player.photo_url}
+                          alt={`${player.first_name ?? ""} ${player.last_name ?? ""}`}
+                        />
+                        <div>
+                          <div className="roster-player-name">
+                            {player.last_name}, {player.first_name}
+                          </div>
+                          <div>
+                            {player.grade_group} | {player.grade} | {player.school}
+                          </div>
+                          <div>
+                            Jersey #{player.jersey_number || "-"} | Age{" "}
+                            {calculateAge(player.birth_date) ?? "-"}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="roster-player-meta">
+                        Latest Eval Score: {latest?.total_score ?? "-"} / 65
+                      </div>
+                      <div className="roster-player-meta">
+                        Checked In: {player.checked_in ? "Yes" : "No"}
+                      </div>
+                      <div className="document-status-row">
+                        <DocumentStatus
+                          label="Birth Certificate"
+                          url={player.birth_certificate_url}
+                        />
+                        <DocumentStatus
+                          label="Report Card"
+                          url={player.report_card_url}
+                        />
+                      </div>
+                      <div className="roster-card-actions">
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          onClick={() => {
+                            setSelectedPlayerId(player.id);
+                            setTab("attendance");
+                          }}
+                        >
+                          Open Profile
+                        </button>
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          onClick={() => openEditModal(player)}
+                        >
+                          Edit
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
           <div className="roster-grid">
             {TEAM_OPTIONS.map((team) => (
               <div key={team} className="card">
@@ -1480,6 +1890,10 @@ export default function App() {
                                 {player.grade_group} • {player.grade}
                               </div>
                               <div>{player.school}</div>
+                              <div>
+                                Jersey #{player.jersey_number || "-"} | Age{" "}
+                                {calculateAge(player.birth_date) ?? "-"}
+                              </div>
                             </div>
                           </div>
                           <div className="roster-player-meta">
@@ -1487,6 +1901,16 @@ export default function App() {
                           </div>
                           <div className="roster-player-meta">
                             Checked In: {player.checked_in ? "Yes" : "No"}
+                          </div>
+                          <div className="document-status-row compact">
+                            <DocumentStatus
+                              label="Birth Cert"
+                              url={player.birth_certificate_url}
+                            />
+                            <DocumentStatus
+                              label="Report Card"
+                              url={player.report_card_url}
+                            />
                           </div>
                         </div>
                       );
@@ -1515,6 +1939,14 @@ export default function App() {
 
             <form onSubmit={addPlayer} className="form-stack">
               <PhotoPicker onFileReady={(file) => setRegistrationPhotoFile(file)} />
+              <DocumentPicker
+                label="Birth Certificate"
+                onFileReady={(file) => setRegistrationBirthCertificateFile(file)}
+              />
+              <DocumentPicker
+                label="Report Card"
+                onFileReady={(file) => setRegistrationReportCardFile(file)}
+              />
 
               <input
                 className="input"
@@ -1552,6 +1984,27 @@ export default function App() {
                   setForm({ ...form, birth_date: e.target.value })
                 }
               />
+              <input
+                className="input"
+                placeholder="Jersey Number"
+                value={form.jersey_number}
+                onChange={(e) =>
+                  setForm({ ...form, jersey_number: e.target.value })
+                }
+              />
+              <select
+                className="select"
+                value={form.suggested_team}
+                onChange={(e) =>
+                  setForm({ ...form, suggested_team: e.target.value as TeamOption })
+                }
+              >
+                {TEAM_OPTIONS.map((team) => (
+                  <option key={team} value={team}>
+                    {team}
+                  </option>
+                ))}
+              </select>
               <input
                 className="input"
                 placeholder="Player Cell"
@@ -1615,6 +2068,20 @@ export default function App() {
                   players.find((p) => p.id === editingPlayerId)?.photo_url
                 }
               />
+              <DocumentPicker
+                label="Birth Certificate"
+                onFileReady={(file) => setEditBirthCertificateFile(file)}
+                currentUrl={
+                  players.find((p) => p.id === editingPlayerId)?.birth_certificate_url
+                }
+              />
+              <DocumentPicker
+                label="Report Card"
+                onFileReady={(file) => setEditReportCardFile(file)}
+                currentUrl={
+                  players.find((p) => p.id === editingPlayerId)?.report_card_url
+                }
+              />
 
               <input
                 className="input"
@@ -1656,6 +2123,30 @@ export default function App() {
                   setEditForm({ ...editForm, birth_date: e.target.value })
                 }
               />
+              <input
+                className="input"
+                placeholder="Jersey Number"
+                value={editForm.jersey_number}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, jersey_number: e.target.value })
+                }
+              />
+              <select
+                className="select"
+                value={editForm.suggested_team}
+                onChange={(e) =>
+                  setEditForm({
+                    ...editForm,
+                    suggested_team: e.target.value as TeamOption,
+                  })
+                }
+              >
+                {TEAM_OPTIONS.map((team) => (
+                  <option key={team} value={team}>
+                    {team}
+                  </option>
+                ))}
+              </select>
               <input
                 className="input"
                 placeholder="Player Cell"
