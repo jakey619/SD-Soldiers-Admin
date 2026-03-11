@@ -590,6 +590,7 @@ export default function App() {
   const [activeRosterTeam, setActiveRosterTeam] = useState<TeamOption>("15u Salute");
   const [rosterAddPlayerId, setRosterAddPlayerId] = useState("");
   const [draggedPlayerId, setDraggedPlayerId] = useState<string | null>(null);
+  const [rosterManagementSearch, setRosterManagementSearch] = useState("");
 
   const [isRegistrationOpen, setIsRegistrationOpen] = useState(false);
   const [isEvaluationOpen, setIsEvaluationOpen] = useState(false);
@@ -788,6 +789,19 @@ export default function App() {
         )
       );
   }, [players, activeRosterTeam, rosterAddPlayerId]);
+
+  const rosterManagementFilteredPlayers = useMemo(() => {
+    const term = rosterManagementSearch.toLowerCase();
+    const source = term
+      ? players.filter((player) => playerSearchText(player).includes(term))
+      : players;
+
+    return [...source].sort((a, b) =>
+      `${a.last_name ?? ""} ${a.first_name ?? ""}`.localeCompare(
+        `${b.last_name ?? ""} ${b.first_name ?? ""}`
+      )
+    );
+  }, [players, rosterManagementSearch]);
 
   const checkedInCount = useMemo(
     () => players.filter((p) => p.checked_in).length,
@@ -2244,54 +2258,69 @@ export default function App() {
               <div className="empty-text">Drag a player onto a team.</div>
             </div>
 
-            <div
-              className="roster-drop-zone roster-drop-zone-pool"
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={() => handleRosterDrop("Undecided")}
-            >
-              <div className="roster-drop-zone-title">Unassigned / Available</div>
-              <div className="roster-management-list">
-                {rosterGroups.Undecided.map((player) => (
-                  <div
-                    key={player.id}
-                    className="roster-management-card"
-                    draggable
-                    onDragStart={() => setDraggedPlayerId(player.id)}
-                    onDragEnd={() => setDraggedPlayerId(null)}
-                  >
-                    <div className="roster-management-name">
-                      {player.last_name}, {player.first_name}
-                    </div>
-                    <div className="roster-management-meta">
-                      {player.grade_group ?? "-"} | {player.grade ?? "-"} | #{player.jersey_number || "-"}
-                    </div>
-                  </div>
-                ))}
-                {rosterGroups.Undecided.length === 0 && (
-                  <div className="empty-text">No unassigned players.</div>
-                )}
-              </div>
-            </div>
+            <input
+              className="input"
+              placeholder="Search players on the left"
+              value={rosterManagementSearch}
+              onChange={(e) => setRosterManagementSearch(e.target.value)}
+            />
 
-            <div className="roster-management-list">
-              {players
-                .filter((player) => (player.suggested_team ?? "Undecided") !== "Undecided")
-                .map((player) => (
-                  <div
-                    key={player.id}
-                    className="roster-management-card"
-                    draggable
-                    onDragStart={() => setDraggedPlayerId(player.id)}
-                    onDragEnd={() => setDraggedPlayerId(null)}
-                  >
-                    <div className="roster-management-name">
-                      {player.last_name}, {player.first_name}
+            <div className="roster-management-left-scroll">
+              <div
+                className="roster-drop-zone roster-drop-zone-pool"
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => handleRosterDrop("Undecided")}
+              >
+                <div className="roster-drop-zone-title">Unassigned / Available</div>
+                <div className="roster-management-list">
+                  {rosterManagementFilteredPlayers
+                    .filter((player) => (player.suggested_team ?? "Undecided") === "Undecided")
+                    .map((player) => (
+                      <div
+                        key={player.id}
+                        className="roster-management-card"
+                        draggable
+                        onDragStart={() => setDraggedPlayerId(player.id)}
+                        onDragEnd={() => setDraggedPlayerId(null)}
+                        onDoubleClick={() => openEditModal(player)}
+                      >
+                        <div className="roster-management-name">
+                          {player.last_name}, {player.first_name}
+                        </div>
+                        <div className="roster-management-meta">
+                          {player.grade_group ?? "-"} | {player.grade ?? "-"} | #{player.jersey_number || "-"}
+                        </div>
+                      </div>
+                    ))}
+                  {rosterManagementFilteredPlayers.filter(
+                    (player) => (player.suggested_team ?? "Undecided") === "Undecided"
+                  ).length === 0 && (
+                    <div className="empty-text">No unassigned players.</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="roster-management-list">
+                {rosterManagementFilteredPlayers
+                  .filter((player) => (player.suggested_team ?? "Undecided") !== "Undecided")
+                  .map((player) => (
+                    <div
+                      key={player.id}
+                      className="roster-management-card"
+                      draggable
+                      onDragStart={() => setDraggedPlayerId(player.id)}
+                      onDragEnd={() => setDraggedPlayerId(null)}
+                      onDoubleClick={() => openEditModal(player)}
+                    >
+                      <div className="roster-management-name">
+                        {player.last_name}, {player.first_name}
+                      </div>
+                      <div className="roster-management-meta">
+                        {player.suggested_team ?? "Undecided"} | Grade {player.grade ?? "-"} | #{player.jersey_number || "-"}
+                      </div>
                     </div>
-                    <div className="roster-management-meta">
-                      {player.suggested_team ?? "Undecided"} | Grade {player.grade ?? "-"} | #{player.jersey_number || "-"}
-                    </div>
-                  </div>
-                ))}
+                  ))}
+              </div>
             </div>
           </div>
 
@@ -2320,6 +2349,7 @@ export default function App() {
                         draggable
                         onDragStart={() => setDraggedPlayerId(player.id)}
                         onDragEnd={() => setDraggedPlayerId(null)}
+                        onDoubleClick={() => openEditModal(player)}
                       >
                         <div className="roster-management-name">
                           {player.last_name}, {player.first_name}

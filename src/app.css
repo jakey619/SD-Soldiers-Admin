@@ -347,6 +347,11 @@ textarea {
   align-items: start;
 }
 
+.roster-management-pool {
+  position: sticky;
+  top: 24px;
+}
+
 .roster-focus-card {
   display: grid;
   gap: 16px;
@@ -395,6 +400,14 @@ textarea {
 .roster-management-list {
   display: grid;
   gap: 10px;
+}
+
+.roster-management-left-scroll {
+  max-height: calc(100vh - 240px);
+  overflow-y: auto;
+  padding-right: 6px;
+  display: grid;
+  gap: 14px;
 }
 
 .roster-drop-zone {
@@ -1068,6 +1081,16 @@ textarea {
   .roster-management-page,
   .roster-management-grid {
     grid-template-columns: 1fr;
+  }
+
+  .roster-management-pool {
+    position: static;
+  }
+
+  .roster-management-left-scroll {
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
   }
 
   .evaluation-modal-grid {
