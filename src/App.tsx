@@ -128,6 +128,8 @@ type TeamStats = {
   averageScore: number | null;
 };
 
+const APP_VERSION = "1.0.0";
+
 type ManagementDocumentCategory =
   | "insurance"
   | "agreement"
@@ -634,6 +636,26 @@ function FormFieldRow({
   );
 }
 
+function NavButton({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`tab-button ${active ? "active" : ""}`}
+    >
+      {label}
+    </button>
+  );
+}
+
 export default function App() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [latestEvaluations, setLatestEvaluations] = useState<LatestEvaluation[]>([]);
@@ -655,6 +677,8 @@ export default function App() {
   const [managementDocumentCategory, setManagementDocumentCategory] =
     useState<ManagementDocumentCategory>("insurance");
   const [managementDocumentFile, setManagementDocumentFile] = useState<File | null>(null);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isAboutOpen, setIsAboutOpen] = useState(false);
 
   const [isRegistrationOpen, setIsRegistrationOpen] = useState(false);
   const [isEvaluationOpen, setIsEvaluationOpen] = useState(false);
@@ -908,6 +932,11 @@ export default function App() {
       count: players.filter((player) => player.grade === grade).length,
     }));
   }, [players, gradeOptions]);
+
+  function goToTab(nextTab: MainTab) {
+    setTab(nextTab);
+    setIsMobileMenuOpen(false);
+  }
 
   const teamStats = useMemo<TeamStats[]>(() => {
     return TEAM_OPTIONS.map((team) => {
@@ -1596,6 +1625,13 @@ export default function App() {
         </div>
 
         <div className="status-area">
+          <button
+            type="button"
+            className="mobile-menu-button"
+            onClick={() => setIsMobileMenuOpen((prev) => !prev)}
+          >
+            Menu
+          </button>
           <div className="app-status">{status}</div>
         </div>
       </div>
@@ -1614,48 +1650,71 @@ export default function App() {
       </div>
 
       <div className="tab-row">
-        <button
-          type="button"
-          onClick={() => setTab("players")}
-          className={`tab-button ${tab === "players" ? "active" : ""}`}
-        >
-          Players
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("attendance")}
-          className={`tab-button ${tab === "attendance" ? "active" : ""}`}
-        >
-          Evaluations
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("door")}
-          className={`tab-button ${tab === "door" ? "active" : ""}`}
-        >
-          Tryouts
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("rosters")}
-          className={`tab-button ${tab === "rosters" ? "active" : ""}`}
-        >
-          Rosters
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("roster-management")}
-          className={`tab-button ${tab === "roster-management" ? "active" : ""}`}
-        >
-          Roster Management
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("documents")}
-          className={`tab-button ${tab === "documents" ? "active" : ""}`}
-        >
-          Team Documents
-        </button>
+        <NavButton label="Players" active={tab === "players"} onClick={() => goToTab("players")} />
+        <NavButton
+          label="Evaluations"
+          active={tab === "attendance"}
+          onClick={() => goToTab("attendance")}
+        />
+        <NavButton label="Tryouts" active={tab === "door"} onClick={() => goToTab("door")} />
+        <NavButton label="Rosters" active={tab === "rosters"} onClick={() => goToTab("rosters")} />
+        <NavButton
+          label="Roster Management"
+          active={tab === "roster-management"}
+          onClick={() => goToTab("roster-management")}
+        />
+        <NavButton
+          label="Team Documents"
+          active={tab === "documents"}
+          onClick={() => goToTab("documents")}
+        />
+      </div>
+
+      <div className={`mobile-menu-sheet ${isMobileMenuOpen ? "open" : ""}`}>
+        <div className="mobile-menu-header">
+          <div>
+            <div className="panel-kicker">Navigation</div>
+            <div className="mobile-menu-title">San Diego Soldiers</div>
+          </div>
+          <button
+            type="button"
+            className="modal-close"
+            onClick={() => setIsMobileMenuOpen(false)}
+          >
+            ×
+          </button>
+        </div>
+        <div className="mobile-menu-list">
+          <NavButton label="Players" active={tab === "players"} onClick={() => goToTab("players")} />
+          <NavButton
+            label="Evaluations"
+            active={tab === "attendance"}
+            onClick={() => goToTab("attendance")}
+          />
+          <NavButton label="Tryouts" active={tab === "door"} onClick={() => goToTab("door")} />
+          <NavButton label="Rosters" active={tab === "rosters"} onClick={() => goToTab("rosters")} />
+          <NavButton
+            label="Roster Management"
+            active={tab === "roster-management"}
+            onClick={() => goToTab("roster-management")}
+          />
+          <NavButton
+            label="Team Documents"
+            active={tab === "documents"}
+            onClick={() => goToTab("documents")}
+          />
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => {
+              setIsMobileMenuOpen(false);
+              setIsAboutOpen(true);
+            }}
+          >
+            About
+          </button>
+        </div>
+        <div className="mobile-menu-footer">Version {APP_VERSION}</div>
       </div>
 
       {tab === "players" ? (
@@ -3199,6 +3258,35 @@ export default function App() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isAboutOpen && (
+        <div className="modal-overlay" onClick={() => setIsAboutOpen(false)}>
+          <div className="modal-card modal-card-narrow" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>About</h3>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setIsAboutOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="about-stack">
+              <div className="detail-line">
+                <strong>App:</strong> San Diego Soldiers Management Tool
+              </div>
+              <div className="detail-line">
+                <strong>Version:</strong> {APP_VERSION}
+              </div>
+              <div className="detail-line">
+                <strong>Developer:</strong> Robret J. Rush, Jr.
+              </div>
             </div>
           </div>
         </div>
