@@ -27,7 +27,12 @@ type TeamOption =
   | "2032 Honor"
   | "Undecided";
 
-type MainTab = "attendance" | "door" | "rosters";
+type MainTab =
+  | "players"
+  | "attendance"
+  | "door"
+  | "rosters"
+  | "roster-management";
 
 type AttendanceFilter =
   | "all"
@@ -192,6 +197,29 @@ function createEmptyPlayerForm(suggestedTeam: TeamOption = "Undecided") {
     parent_email: "",
     suggested_team: suggestedTeam,
   };
+}
+
+function playerSearchText(player: Player) {
+  return [
+    player.first_name,
+    player.last_name,
+    player.grade,
+    player.grade_group,
+    player.school,
+    player.birth_date,
+    player.jersey_number,
+    player.player_phone,
+    player.parent_phone,
+    player.parent_email,
+    player.suggested_team,
+    player.notes,
+    player.checked_in ? "checked in" : "not checked in",
+    player.birth_certificate_url ? "birth certificate" : "missing birth certificate",
+    player.report_card_url ? "report card" : "missing report card",
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
 }
 
 function initialEvalForm(): EvalForm {
@@ -532,6 +560,21 @@ function DocumentStatus({
   );
 }
 
+function FormFieldRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="form-field-row">
+      <label className="form-field-label">{label}</label>
+      <div>{children}</div>
+    </div>
+  );
+}
+
 export default function App() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [latestEvaluations, setLatestEvaluations] = useState<LatestEvaluation[]>([]);
@@ -539,12 +582,14 @@ export default function App() {
   const [status, setStatus] = useState("Loading...");
   const [search, setSearch] = useState("");
   const [doorSearch, setDoorSearch] = useState("");
-  const [groupFilter, setGroupFilter] = useState("All");
+  const [selectedTeams, setSelectedTeams] = useState<TeamOption[]>([]);
+  const [selectedGrades, setSelectedGrades] = useState<string[]>([]);
   const [attendanceFilter, setAttendanceFilter] = useState<AttendanceFilter>("all");
-  const [tab, setTab] = useState<MainTab>("attendance");
+  const [tab, setTab] = useState<MainTab>("players");
   const [selectedPlayerId, setSelectedPlayerId] = useState<string>("");
   const [activeRosterTeam, setActiveRosterTeam] = useState<TeamOption>("15u Salute");
   const [rosterAddPlayerId, setRosterAddPlayerId] = useState("");
+  const [draggedPlayerId, setDraggedPlayerId] = useState<string | null>(null);
 
   const [isRegistrationOpen, setIsRegistrationOpen] = useState(false);
   const [isEvaluationOpen, setIsEvaluationOpen] = useState(false);
@@ -643,17 +688,23 @@ export default function App() {
     }
   }, [selectedPlayerId]);
 
+  const gradeOptions = useMemo(() => {
+    return [...new Set(players.map((player) => player.grade).filter(Boolean))]
+      .map((grade) => grade as string)
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  }, [players]);
+
   const filteredPlayers = useMemo(() => {
     return players.filter((player) => {
       const latest = latestEvalMap.get(player.id);
       const isEvaluated = Boolean(latest);
-
-      const text =
-        `${player.first_name ?? ""} ${player.last_name ?? ""} ${player.school ?? ""} ${player.parent_phone ?? ""} ${player.parent_email ?? ""} ${player.jersey_number ?? ""}`.toLowerCase();
-
-      const matchesSearch = text.includes(search.toLowerCase());
-      const matchesGroup =
-        groupFilter === "All" || player.grade_group === groupFilter;
+      const matchesSearch = playerSearchText(player).includes(search.toLowerCase());
+      const matchesTeam =
+        selectedTeams.length === 0 ||
+        selectedTeams.includes(player.suggested_team ?? "Undecided");
+      const matchesGrade =
+        selectedGrades.length === 0 ||
+        selectedGrades.includes(player.grade ?? "");
 
       let matchesAttendanceFilter = true;
       switch (attendanceFilter) {
@@ -673,17 +724,15 @@ export default function App() {
           matchesAttendanceFilter = true;
       }
 
-      return matchesSearch && matchesGroup && matchesAttendanceFilter;
+      return matchesSearch && matchesTeam && matchesGrade && matchesAttendanceFilter;
     });
-  }, [players, search, groupFilter, attendanceFilter, latestEvalMap]);
+  }, [players, search, selectedTeams, selectedGrades, attendanceFilter, latestEvalMap]);
 
   const doorPlayers = useMemo(() => {
     const term = doorSearch.toLowerCase();
     return players
       .filter((player) => {
-        const text =
-          `${player.first_name ?? ""} ${player.last_name ?? ""} ${player.school ?? ""} ${player.jersey_number ?? ""}`.toLowerCase();
-        return text.includes(term);
+        return playerSearchText(player).includes(term);
       })
       .sort((a, b) =>
         `${a.last_name ?? ""} ${a.first_name ?? ""}`.localeCompare(
@@ -1238,6 +1287,85 @@ export default function App() {
     setRosterAddPlayerId("");
   }
 
+  function toggleTeamFilter(team: TeamOption) {
+    setSelectedTeams((prev) =>
+      prev.includes(team) ? prev.filter((entry) => entry !== team) : [...prev, team]
+    );
+  }
+
+  function toggleGradeFilter(grade: string) {
+    setSelectedGrades((prev) =>
+      prev.includes(grade) ? prev.filter((entry) => entry !== grade) : [...prev, grade]
+    );
+  }
+
+  function openRosterWindow(team: TeamOption) {
+    const rosterPlayers = rosterGroups[team] ?? [];
+    const popup = window.open("", "_blank", "width=980,height=720");
+
+    if (!popup) {
+      setStatus("Popup blocked. Allow popups to open roster windows.");
+      return;
+    }
+
+    const cards = rosterPlayers
+      .map((player) => {
+        const latest = latestEvalMap.get(player.id);
+
+        return `
+          <article style="padding:16px;border:1px solid #cbd5e1;border-radius:14px;background:#f8fafc;">
+            <h3 style="margin:0 0 8px 0;font:700 20px Arial,sans-serif;color:#0f172a;">
+              ${player.last_name ?? ""}, ${player.first_name ?? ""}
+            </h3>
+            <p style="margin:4px 0;color:#334155;">${player.grade_group ?? "-"} | ${player.grade ?? "-"} | ${player.school ?? "-"}</p>
+            <p style="margin:4px 0;color:#334155;">Jersey #${player.jersey_number ?? "-"} | Birthdate ${formatBirthDate(player.birth_date)} | Age ${calculateAge(player.birth_date) ?? "-"}</p>
+            <p style="margin:4px 0;color:#334155;">Checked In: ${player.checked_in ? "Yes" : "No"} | Latest Score: ${latest?.total_score ?? "-"}</p>
+          </article>
+        `;
+      })
+      .join("");
+
+    popup.document.write(`
+      <!doctype html>
+      <html lang="en">
+        <head>
+          <meta charset="utf-8" />
+          <title>${team} Roster</title>
+          <style>
+            body { margin: 0; padding: 24px; font-family: Arial, sans-serif; background: #e2e8f0; color: #0f172a; }
+            h1 { margin: 0 0 8px 0; }
+            p { margin: 0 0 18px 0; color: #475569; }
+            main { display: grid; gap: 12px; }
+          </style>
+        </head>
+        <body>
+          <h1>${team} Roster</h1>
+          <p>Players: ${rosterPlayers.length}</p>
+          <main>${cards || "<p>No players assigned.</p>"}</main>
+        </body>
+      </html>
+    `);
+    popup.document.close();
+  }
+
+  async function handleRosterDrop(team: TeamOption) {
+    if (!draggedPlayerId) return;
+
+    const player = players.find((entry) => entry.id === draggedPlayerId);
+    setDraggedPlayerId(null);
+
+    if (!player) {
+      setStatus("Dragged player was not found.");
+      return;
+    }
+
+    if ((player.suggested_team ?? "Undecided") === team) {
+      return;
+    }
+
+    await updateSuggestedTeam(player, team);
+  }
+
   async function saveEvaluation(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
@@ -1356,6 +1484,13 @@ export default function App() {
       <div className="tab-row">
         <button
           type="button"
+          onClick={() => setTab("players")}
+          className={`tab-button ${tab === "players" ? "active" : ""}`}
+        >
+          Players
+        </button>
+        <button
+          type="button"
           onClick={() => setTab("attendance")}
           className={`tab-button ${tab === "attendance" ? "active" : ""}`}
         >
@@ -1375,9 +1510,144 @@ export default function App() {
         >
           Rosters
         </button>
+        <button
+          type="button"
+          onClick={() => setTab("roster-management")}
+          className={`tab-button ${tab === "roster-management" ? "active" : ""}`}
+        >
+          Roster Management
+        </button>
       </div>
 
-      {tab === "attendance" ? (
+      {tab === "players" ? (
+        <div className="players-page">
+          <div className="card">
+            <div className="card-header-row">
+              <h2>Players</h2>
+              <button
+                type="button"
+                className="primary-button"
+                onClick={() => openRegistrationModal()}
+              >
+                New Registration
+              </button>
+            </div>
+
+            <div className="toolbar-row">
+              <input
+                className="input"
+                placeholder="Search any player detail"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+
+            <div className="filter-block">
+              <div className="filter-block-title">Filter By Team</div>
+              <div className="filter-chip-row">
+                <button
+                  type="button"
+                  className={`filter-chip ${selectedTeams.length === 0 ? "active" : ""}`}
+                  onClick={() => setSelectedTeams([])}
+                >
+                  All Teams
+                </button>
+                {TEAM_OPTIONS.map((team) => (
+                  <button
+                    key={team}
+                    type="button"
+                    className={`filter-chip ${
+                      selectedTeams.includes(team) ? "active" : ""
+                    }`}
+                    onClick={() => toggleTeamFilter(team)}
+                  >
+                    {team}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="filter-block">
+              <div className="filter-block-title">Filter By Grade</div>
+              <div className="filter-chip-row">
+                <button
+                  type="button"
+                  className={`filter-chip ${selectedGrades.length === 0 ? "active" : ""}`}
+                  onClick={() => setSelectedGrades([])}
+                >
+                  All Grades
+                </button>
+                {gradeOptions.map((grade) => (
+                  <button
+                    key={grade}
+                    type="button"
+                    className={`filter-chip ${
+                      selectedGrades.includes(grade) ? "active" : ""
+                    }`}
+                    onClick={() => toggleGradeFilter(grade)}
+                  >
+                    Grade {grade}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="players-grid">
+              {filteredPlayers.map((player) => (
+                <button
+                  key={player.id}
+                  type="button"
+                  className="player-card"
+                  onClick={() => setSelectedPlayerId(player.id)}
+                  onDoubleClick={() => openEditModal(player)}
+                >
+                  <div className="player-card-header">
+                    <PlayerPhoto
+                      src={player.photo_url}
+                      alt={`${player.first_name ?? ""} ${player.last_name ?? ""}`}
+                    />
+                    <div>
+                      <div className="player-card-name">
+                        {player.last_name}, {player.first_name}
+                      </div>
+                      <div className="player-card-meta">
+                        {player.grade_group ?? "-"} | Grade {player.grade ?? "-"}
+                      </div>
+                      <div className="player-card-meta">{player.school ?? "-"}</div>
+                    </div>
+                  </div>
+                  <div className="player-card-meta">Jersey #{player.jersey_number || "-"}</div>
+                  <div className="player-card-meta">
+                    Birthdate {formatBirthDate(player.birth_date)}
+                  </div>
+                  <div className="player-card-meta">
+                    Team: {player.suggested_team ?? "Undecided"}
+                  </div>
+                  <div className="badge-row">
+                    <span
+                      className={`badge ${
+                        player.checked_in ? "badge-good" : "badge-neutral"
+                      }`}
+                    >
+                      {player.checked_in ? "Checked In" : "Not Checked In"}
+                    </span>
+                    <span
+                      className={`badge ${
+                        latestEvalMap.get(player.id) ? "badge-info" : "badge-neutral"
+                      }`}
+                    >
+                      {latestEvalMap.get(player.id) ? "Evaluated" : "Not Evaluated"}
+                    </span>
+                  </div>
+                </button>
+              ))}
+              {filteredPlayers.length === 0 && (
+                <div className="empty-text">No players match the current filters.</div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : tab === "attendance" ? (
         <div className="attendance-grid">
           <div className="card">
             <div className="card-header-row">
@@ -1394,20 +1664,60 @@ export default function App() {
             <div className="toolbar-row">
               <input
                 className="input"
-                placeholder="Search player, school, phone, email"
+                placeholder="Search any player detail"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
+            </div>
 
-              <select
-                className="select group-select"
-                value={groupFilter}
-                onChange={(e) => setGroupFilter(e.target.value)}
-              >
-                <option value="All">All</option>
-                <option value="High School">High School</option>
-                <option value="Middle School">Middle School</option>
-              </select>
+            <div className="filter-block">
+              <div className="filter-block-title">Filter By Team</div>
+              <div className="filter-chip-row">
+                <button
+                  type="button"
+                  className={`filter-chip ${selectedTeams.length === 0 ? "active" : ""}`}
+                  onClick={() => setSelectedTeams([])}
+                >
+                  All Teams
+                </button>
+                {TEAM_OPTIONS.map((team) => (
+                  <button
+                    key={team}
+                    type="button"
+                    className={`filter-chip ${
+                      selectedTeams.includes(team) ? "active" : ""
+                    }`}
+                    onClick={() => toggleTeamFilter(team)}
+                  >
+                    {team}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="filter-block">
+              <div className="filter-block-title">Filter By Grade</div>
+              <div className="filter-chip-row">
+                <button
+                  type="button"
+                  className={`filter-chip ${selectedGrades.length === 0 ? "active" : ""}`}
+                  onClick={() => setSelectedGrades([])}
+                >
+                  All Grades
+                </button>
+                {gradeOptions.map((grade) => (
+                  <button
+                    key={grade}
+                    type="button"
+                    className={`filter-chip ${
+                      selectedGrades.includes(grade) ? "active" : ""
+                    }`}
+                    onClick={() => toggleGradeFilter(grade)}
+                  >
+                    Grade {grade}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="filter-chip-row">
@@ -1436,6 +1746,7 @@ export default function App() {
                     type="button"
                     className={`checkin-row ${isSelected ? "active" : ""}`}
                     onClick={() => setSelectedPlayerId(player.id)}
+                    onDoubleClick={() => openEditModal(player)}
                   >
                     <PlayerPhoto
                       src={player.photo_url}
@@ -1700,7 +2011,7 @@ export default function App() {
             </div>
           </div>
         </div>
-      ) : (
+      ) : tab === "rosters" ? (
         <div className="rosters-page">
           <div className="rosters-toolbar">
             <h2 className="roster-title">Rosters & Team Stats</h2>
@@ -1863,7 +2174,11 @@ export default function App() {
 
           <div className="roster-grid">
             {TEAM_OPTIONS.map((team) => (
-              <div key={team} className="card">
+              <div
+                key={team}
+                className="card roster-summary-card"
+                onDoubleClick={() => openRosterWindow(team)}
+              >
                 <div className="roster-team-title">{team}</div>
                 <div className="roster-count">
                   Count: {rosterGroups[team].length}
@@ -1919,6 +2234,108 @@ export default function App() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      ) : (
+        <div className="roster-management-page">
+          <div className="card roster-management-pool">
+            <div className="card-header-row">
+              <h2>Player Pool</h2>
+              <div className="empty-text">Drag a player onto a team.</div>
+            </div>
+
+            <div
+              className="roster-drop-zone roster-drop-zone-pool"
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={() => handleRosterDrop("Undecided")}
+            >
+              <div className="roster-drop-zone-title">Unassigned / Available</div>
+              <div className="roster-management-list">
+                {rosterGroups.Undecided.map((player) => (
+                  <div
+                    key={player.id}
+                    className="roster-management-card"
+                    draggable
+                    onDragStart={() => setDraggedPlayerId(player.id)}
+                    onDragEnd={() => setDraggedPlayerId(null)}
+                  >
+                    <div className="roster-management-name">
+                      {player.last_name}, {player.first_name}
+                    </div>
+                    <div className="roster-management-meta">
+                      {player.grade_group ?? "-"} | {player.grade ?? "-"} | #{player.jersey_number || "-"}
+                    </div>
+                  </div>
+                ))}
+                {rosterGroups.Undecided.length === 0 && (
+                  <div className="empty-text">No unassigned players.</div>
+                )}
+              </div>
+            </div>
+
+            <div className="roster-management-list">
+              {players
+                .filter((player) => (player.suggested_team ?? "Undecided") !== "Undecided")
+                .map((player) => (
+                  <div
+                    key={player.id}
+                    className="roster-management-card"
+                    draggable
+                    onDragStart={() => setDraggedPlayerId(player.id)}
+                    onDragEnd={() => setDraggedPlayerId(null)}
+                  >
+                    <div className="roster-management-name">
+                      {player.last_name}, {player.first_name}
+                    </div>
+                    <div className="roster-management-meta">
+                      {player.suggested_team ?? "Undecided"} | Grade {player.grade ?? "-"} | #{player.jersey_number || "-"}
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="card-header-row">
+              <h2>Teams</h2>
+              <div className="empty-text">Drop players onto a roster to move them.</div>
+            </div>
+
+            <div className="roster-management-grid">
+              {TEAM_OPTIONS.filter((team) => team !== "Undecided").map((team) => (
+                <div
+                  key={team}
+                  className="roster-drop-zone"
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => handleRosterDrop(team)}
+                >
+                  <div className="roster-drop-zone-title">
+                    {team} ({rosterGroups[team].length})
+                  </div>
+                  <div className="roster-management-list">
+                    {rosterGroups[team].map((player) => (
+                      <div
+                        key={player.id}
+                        className="roster-management-card"
+                        draggable
+                        onDragStart={() => setDraggedPlayerId(player.id)}
+                        onDragEnd={() => setDraggedPlayerId(null)}
+                      >
+                        <div className="roster-management-name">
+                          {player.last_name}, {player.first_name}
+                        </div>
+                        <div className="roster-management-meta">
+                          Grade {player.grade ?? "-"} | #{player.jersey_number || "-"} | {player.school ?? "-"}
+                        </div>
+                      </div>
+                    ))}
+                    {rosterGroups[team].length === 0 && (
+                      <div className="empty-text">Drop players here.</div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -2083,102 +2500,115 @@ export default function App() {
                 }
               />
 
-              <input
-                className="input"
-                placeholder="First Name"
-                value={editForm.first_name}
-                onChange={(e) =>
-                  setEditForm({ ...editForm, first_name: e.target.value })
-                }
-              />
-              <input
-                className="input"
-                placeholder="Last Name"
-                value={editForm.last_name}
-                onChange={(e) =>
-                  setEditForm({ ...editForm, last_name: e.target.value })
-                }
-              />
-              <input
-                className="input"
-                placeholder="Grade"
-                value={editForm.grade}
-                onChange={(e) =>
-                  setEditForm({ ...editForm, grade: e.target.value })
-                }
-              />
-              <input
-                className="input"
-                placeholder="School"
-                value={editForm.school}
-                onChange={(e) =>
-                  setEditForm({ ...editForm, school: e.target.value })
-                }
-              />
-              <input
-                className="input"
-                type="date"
-                value={editForm.birth_date}
-                onChange={(e) =>
-                  setEditForm({ ...editForm, birth_date: e.target.value })
-                }
-              />
-              <input
-                className="input"
-                placeholder="Jersey Number"
-                value={editForm.jersey_number}
-                onChange={(e) =>
-                  setEditForm({ ...editForm, jersey_number: e.target.value })
-                }
-              />
-              <select
-                className="select"
-                value={editForm.suggested_team}
-                onChange={(e) =>
-                  setEditForm({
-                    ...editForm,
-                    suggested_team: e.target.value as TeamOption,
-                  })
-                }
-              >
-                {TEAM_OPTIONS.map((team) => (
-                  <option key={team} value={team}>
-                    {team}
-                  </option>
-                ))}
-              </select>
-              <input
-                className="input"
-                placeholder="Player Cell"
-                value={editForm.player_phone}
-                onChange={(e) =>
-                  setEditForm({ ...editForm, player_phone: e.target.value })
-                }
-              />
-              <input
-                className="input"
-                placeholder="Parent Cell"
-                value={editForm.parent_phone}
-                onChange={(e) =>
-                  setEditForm({ ...editForm, parent_phone: e.target.value })
-                }
-              />
-              <input
-                className="input"
-                placeholder="Parent Email"
-                value={editForm.parent_email}
-                onChange={(e) =>
-                  setEditForm({ ...editForm, parent_email: e.target.value })
-                }
-              />
-              <textarea
-                className="textarea"
-                placeholder="Notes"
-                value={editForm.notes}
-                onChange={(e) =>
-                  setEditForm({ ...editForm, notes: e.target.value })
-                }
-              />
+              <FormFieldRow label="First Name">
+                <input
+                  className="input"
+                  value={editForm.first_name}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, first_name: e.target.value })
+                  }
+                />
+              </FormFieldRow>
+              <FormFieldRow label="Last Name">
+                <input
+                  className="input"
+                  value={editForm.last_name}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, last_name: e.target.value })
+                  }
+                />
+              </FormFieldRow>
+              <FormFieldRow label="Grade">
+                <input
+                  className="input"
+                  value={editForm.grade}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, grade: e.target.value })
+                  }
+                />
+              </FormFieldRow>
+              <FormFieldRow label="School">
+                <input
+                  className="input"
+                  value={editForm.school}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, school: e.target.value })
+                  }
+                />
+              </FormFieldRow>
+              <FormFieldRow label="Birthdate">
+                <input
+                  className="input"
+                  type="date"
+                  value={editForm.birth_date}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, birth_date: e.target.value })
+                  }
+                />
+              </FormFieldRow>
+              <FormFieldRow label="Jersey Number">
+                <input
+                  className="input"
+                  value={editForm.jersey_number}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, jersey_number: e.target.value })
+                  }
+                />
+              </FormFieldRow>
+              <FormFieldRow label="Team">
+                <select
+                  className="select"
+                  value={editForm.suggested_team}
+                  onChange={(e) =>
+                    setEditForm({
+                      ...editForm,
+                      suggested_team: e.target.value as TeamOption,
+                    })
+                  }
+                >
+                  {TEAM_OPTIONS.map((team) => (
+                    <option key={team} value={team}>
+                      {team}
+                    </option>
+                  ))}
+                </select>
+              </FormFieldRow>
+              <FormFieldRow label="Player Cell">
+                <input
+                  className="input"
+                  value={editForm.player_phone}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, player_phone: e.target.value })
+                  }
+                />
+              </FormFieldRow>
+              <FormFieldRow label="Parent Cell">
+                <input
+                  className="input"
+                  value={editForm.parent_phone}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, parent_phone: e.target.value })
+                  }
+                />
+              </FormFieldRow>
+              <FormFieldRow label="Parent Email">
+                <input
+                  className="input"
+                  value={editForm.parent_email}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, parent_email: e.target.value })
+                  }
+                />
+              </FormFieldRow>
+              <FormFieldRow label="Notes">
+                <textarea
+                  className="textarea"
+                  value={editForm.notes}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, notes: e.target.value })
+                  }
+                />
+              </FormFieldRow>
 
               <div className="edit-actions">
                 <button type="submit" className="primary-button">
