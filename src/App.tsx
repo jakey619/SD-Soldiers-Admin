@@ -8,7 +8,11 @@ import {
   type ReactNode,
 } from "react";
 import { supabase } from "./lib/supabase";
-import { uploadPlayerDocument, uploadPlayerPhoto } from "./lib/playerPhotos";
+import {
+  uploadManagementDocument,
+  uploadPlayerDocument,
+  uploadPlayerPhoto,
+} from "./lib/playerPhotos";
 import soldiersLogo from "./assets/soldiers-logo.png";
 import "./app.css";
 
@@ -32,7 +36,8 @@ type MainTab =
   | "attendance"
   | "door"
   | "rosters"
-  | "roster-management";
+  | "roster-management"
+  | "documents";
 
 type AttendanceFilter =
   | "all"
@@ -123,6 +128,22 @@ type TeamStats = {
   averageScore: number | null;
 };
 
+type ManagementDocumentCategory =
+  | "insurance"
+  | "agreement"
+  | "receipt"
+  | "finance"
+  | "other";
+
+type ManagementDocument = {
+  name: string;
+  path: string;
+  url: string;
+  createdAtLabel: string;
+  title: string;
+  category: string;
+};
+
 const TEAM_OPTIONS: TeamOption[] = [
   "15u Salute",
   "15u Honor",
@@ -148,6 +169,17 @@ const ATTENDANCE_FILTER_OPTIONS: {
   { value: "not-checked-in", label: "Not Checked In" },
   { value: "evaluated", label: "Evaluated" },
   { value: "not-evaluated", label: "Not Evaluated" },
+];
+
+const MANAGEMENT_DOCUMENT_CATEGORIES: {
+  value: ManagementDocumentCategory;
+  label: string;
+}[] = [
+  { value: "insurance", label: "Insurance" },
+  { value: "agreement", label: "Agreement" },
+  { value: "receipt", label: "Receipt" },
+  { value: "finance", label: "Finance" },
+  { value: "other", label: "Other" },
 ];
 
 function groupFromGrade(grade: string) {
@@ -220,6 +252,33 @@ function playerSearchText(player: Player) {
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
+}
+
+function parseManagementDocument(name: string, url: string): ManagementDocument {
+  const [rawTimestamp = "", rawCategory = "other", rawTitleWithExt = name] =
+    name.split("__");
+  const titleWithoutExt = rawTitleWithExt.replace(/\.[^.]+$/, "");
+  const title = titleWithoutExt
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+  const timestamp = Number(rawTimestamp);
+
+  return {
+    name,
+    path: name,
+    url,
+    createdAtLabel: Number.isFinite(timestamp)
+      ? new Date(timestamp).toLocaleString()
+      : "-",
+    title: title || "Document",
+    category: rawCategory
+      .split("-")
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" "),
+  };
 }
 
 function initialEvalForm(): EvalForm {
@@ -591,6 +650,11 @@ export default function App() {
   const [rosterAddPlayerId, setRosterAddPlayerId] = useState("");
   const [draggedPlayerId, setDraggedPlayerId] = useState<string | null>(null);
   const [rosterManagementSearch, setRosterManagementSearch] = useState("");
+  const [managementDocuments, setManagementDocuments] = useState<ManagementDocument[]>([]);
+  const [managementDocumentTitle, setManagementDocumentTitle] = useState("");
+  const [managementDocumentCategory, setManagementDocumentCategory] =
+    useState<ManagementDocumentCategory>("insurance");
+  const [managementDocumentFile, setManagementDocumentFile] = useState<File | null>(null);
 
   const [isRegistrationOpen, setIsRegistrationOpen] = useState(false);
   const [isEvaluationOpen, setIsEvaluationOpen] = useState(false);
@@ -665,9 +729,32 @@ export default function App() {
     setPlayerEvaluations((data ?? []) as Evaluation[]);
   }
 
+  async function loadManagementDocuments() {
+    const { data, error } = await supabase.storage
+      .from("management-documents")
+      .list("", { limit: 200, sortBy: { column: "name", order: "desc" } });
+
+    if (error) {
+      setStatus(`Management documents load error: ${error.message}`);
+      return;
+    }
+
+    const docs = (data ?? [])
+      .filter((item) => item.name && !item.id?.endsWith("/"))
+      .map((item) => {
+        const { data: publicUrlData } = supabase.storage
+          .from("management-documents")
+          .getPublicUrl(item.name);
+        return parseManagementDocument(item.name, publicUrlData.publicUrl);
+      });
+
+    setManagementDocuments(docs);
+  }
+
   async function refreshAll() {
     await loadPlayers();
     await loadLatestEvaluations();
+    await loadManagementDocuments();
     setStatus("Data loaded.");
   }
 
@@ -814,6 +901,13 @@ export default function App() {
   }, [latestEvaluations]);
 
   const notCheckedInCount = players.length - checkedInCount;
+
+  const gradeCounts = useMemo(() => {
+    return gradeOptions.map((grade) => ({
+      grade,
+      count: players.filter((player) => player.grade === grade).length,
+    }));
+  }, [players, gradeOptions]);
 
   const teamStats = useMemo<TeamStats[]>(() => {
     return TEAM_OPTIONS.map((team) => {
@@ -1380,6 +1474,36 @@ export default function App() {
     await updateSuggestedTeam(player, team);
   }
 
+  async function uploadManagementDoc(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+
+    if (!managementDocumentFile) {
+      setStatus("Choose a file to upload.");
+      return;
+    }
+
+    const title = managementDocumentTitle.trim() || managementDocumentFile.name;
+
+    try {
+      await uploadManagementDocument(
+        managementDocumentFile,
+        title,
+        managementDocumentCategory
+      );
+      setManagementDocumentTitle("");
+      setManagementDocumentCategory("insurance");
+      setManagementDocumentFile(null);
+      await loadManagementDocuments();
+      setStatus("Management document uploaded.");
+    } catch (error) {
+      setStatus(
+        `Management document upload error: ${
+          error instanceof Error ? error.message : "Upload failed."
+        }`
+      );
+    }
+  }
+
   async function saveEvaluation(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
@@ -1467,7 +1591,7 @@ export default function App() {
           />
           <div className="brand-text">
             <div className="brand-title">San Diego Soldiers</div>
-            <div className="brand-subtitle">Tryout Admin Dashboard</div>
+            <div className="brand-subtitle">Team Management Dashboard</div>
           </div>
         </div>
 
@@ -1478,21 +1602,15 @@ export default function App() {
 
       <div className="summary-row">
         <div className="summary-card">
-          <div className="summary-label">Registered</div>
+          <div className="summary-label">Total Players</div>
           <div className="summary-value">{players.length}</div>
         </div>
-        <div className="summary-card">
-          <div className="summary-label">Checked In</div>
-          <div className="summary-value">{checkedInCount}</div>
-        </div>
-        <div className="summary-card">
-          <div className="summary-label">Not Checked In</div>
-          <div className="summary-value">{notCheckedInCount}</div>
-        </div>
-        <div className="summary-card">
-          <div className="summary-label">Evaluated</div>
-          <div className="summary-value">{evaluatedCount}</div>
-        </div>
+        {gradeCounts.map((entry) => (
+          <div key={entry.grade} className="summary-card">
+            <div className="summary-label">Grade {entry.grade}</div>
+            <div className="summary-value">{entry.count}</div>
+          </div>
+        ))}
       </div>
 
       <div className="tab-row">
@@ -1508,14 +1626,14 @@ export default function App() {
           onClick={() => setTab("attendance")}
           className={`tab-button ${tab === "attendance" ? "active" : ""}`}
         >
-          Attendance
+          Evaluations
         </button>
         <button
           type="button"
           onClick={() => setTab("door")}
           className={`tab-button ${tab === "door" ? "active" : ""}`}
         >
-          Door Mode
+          Tryouts
         </button>
         <button
           type="button"
@@ -1530,6 +1648,13 @@ export default function App() {
           className={`tab-button ${tab === "roster-management" ? "active" : ""}`}
         >
           Roster Management
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("documents")}
+          className={`tab-button ${tab === "documents" ? "active" : ""}`}
+        >
+          Team Documents
         </button>
       </div>
 
@@ -1968,9 +2093,28 @@ export default function App() {
         </div>
       ) : tab === "door" ? (
         <div className="door-grid">
+          <div className="summary-row tryout-summary-row">
+            <div className="summary-card">
+              <div className="summary-label">Registered</div>
+              <div className="summary-value">{players.length}</div>
+            </div>
+            <div className="summary-card">
+              <div className="summary-label">Checked In</div>
+              <div className="summary-value">{checkedInCount}</div>
+            </div>
+            <div className="summary-card">
+              <div className="summary-label">Not Checked In</div>
+              <div className="summary-value">{notCheckedInCount}</div>
+            </div>
+            <div className="summary-card">
+              <div className="summary-label">Evaluated</div>
+              <div className="summary-value">{evaluatedCount}</div>
+            </div>
+          </div>
+
           <div className="card">
             <div className="card-header-row">
-              <h2>Door Mode</h2>
+              <h2>Tryout Check-In</h2>
               <button
                 type="button"
                 className="primary-button"
@@ -2250,11 +2394,14 @@ export default function App() {
             ))}
           </div>
         </div>
-      ) : (
+      ) : tab === "roster-management" ? (
         <div className="roster-management-page">
           <div className="card roster-management-pool">
             <div className="card-header-row">
-              <h2>Player Pool</h2>
+              <div>
+                <div className="panel-kicker">Roster Control</div>
+                <h2 className="panel-title">Player Pool</h2>
+              </div>
               <div className="empty-text">Drag a player onto a team.</div>
             </div>
 
@@ -2326,7 +2473,10 @@ export default function App() {
 
           <div className="card">
             <div className="card-header-row">
-              <h2>Teams</h2>
+              <div>
+                <div className="panel-kicker">Drag And Drop</div>
+                <h2 className="panel-title">Team Boards</h2>
+              </div>
               <div className="empty-text">Drop players onto a roster to move them.</div>
             </div>
 
@@ -2365,6 +2515,103 @@ export default function App() {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="documents-page">
+          <div className="card documents-upload-card">
+            <div className="card-header-row">
+              <h2>Team Documents</h2>
+              <div className="empty-text">
+                Upload organization-wide files like insurance, agreements, and receipts.
+              </div>
+            </div>
+
+            <form onSubmit={uploadManagementDoc} className="form-stack">
+              <FormFieldRow label="Document Title">
+                <input
+                  className="input"
+                  value={managementDocumentTitle}
+                  onChange={(e) => setManagementDocumentTitle(e.target.value)}
+                  placeholder="Insurance Certificate 2026"
+                />
+              </FormFieldRow>
+              <FormFieldRow label="Category">
+                <select
+                  className="select"
+                  value={managementDocumentCategory}
+                  onChange={(e) =>
+                    setManagementDocumentCategory(
+                      e.target.value as ManagementDocumentCategory
+                    )
+                  }
+                >
+                  {MANAGEMENT_DOCUMENT_CATEGORIES.map((category) => (
+                    <option key={category.value} value={category.value}>
+                      {category.label}
+                    </option>
+                  ))}
+                </select>
+              </FormFieldRow>
+              <FormFieldRow label="File">
+                <input
+                  className="input"
+                  type="file"
+                  accept=".pdf,image/*,.doc,.docx,.xls,.xlsx"
+                  onChange={(e) =>
+                    setManagementDocumentFile(e.target.files?.[0] ?? null)
+                  }
+                />
+              </FormFieldRow>
+
+              <div className="edit-actions">
+                <button type="submit" className="primary-button">
+                  Upload Document
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <div className="card">
+            <div className="card-header-row">
+              <h2>Library</h2>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={loadManagementDocuments}
+              >
+                Refresh
+              </button>
+            </div>
+
+            <div className="documents-grid">
+              {managementDocuments.length === 0 ? (
+                <div className="empty-text">No team documents uploaded yet.</div>
+              ) : (
+                managementDocuments.map((document) => (
+                  <div key={document.path} className="document-library-card">
+                    <div className="document-library-title">{document.title}</div>
+                    <div className="document-library-meta">
+                      Category: {document.category || "Other"}
+                    </div>
+                    <div className="document-library-meta">
+                      Uploaded: {document.createdAtLabel}
+                    </div>
+                    <div className="document-library-meta">{document.name}</div>
+                    <div className="document-library-actions">
+                      <a
+                        href={document.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="secondary-button document-action-link"
+                      >
+                        Open
+                      </a>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>

@@ -109,7 +109,7 @@ textarea {
 
 .summary-row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 16px;
   margin-bottom: 24px;
 }
@@ -138,6 +138,10 @@ textarea {
   font-size: 28px;
   font-weight: 800;
   color: #f8fafc;
+}
+
+.tryout-summary-row {
+  margin-bottom: 18px;
 }
 
 .tab-row {
@@ -340,6 +344,51 @@ textarea {
   gap: 18px;
 }
 
+.documents-page {
+  display: grid;
+  gap: 18px;
+}
+
+.documents-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+
+.document-library-card {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(17, 24, 39, 0.88);
+}
+
+.document-library-title {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.document-library-meta {
+  color: #dbeafe;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.document-library-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.document-action-link {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .roster-management-page {
   display: grid;
   grid-template-columns: 360px 1fr;
@@ -420,8 +469,33 @@ textarea {
 
 .roster-drop-zone-title {
   margin-bottom: 12px;
-  font-size: 18px;
-  font-weight: 800;
+  font-size: 19px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #f8fafc;
+  text-shadow: 0 10px 24px rgba(37, 99, 235, 0.25);
+}
+
+.panel-kicker {
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #93c5fd;
+  margin-bottom: 6px;
+}
+
+.panel-title {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  background: linear-gradient(135deg, #f8fafc 0%, #93c5fd 48%, #22c55e 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .roster-management-card {
@@ -1078,6 +1152,7 @@ textarea {
   }
 
   .players-grid,
+  .documents-grid,
   .roster-management-page,
   .roster-management-grid {
     grid-template-columns: 1fr;

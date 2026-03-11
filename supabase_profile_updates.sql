@@ -32,3 +32,33 @@ for update
 to public
 using (bucket_id = 'player-documents')
 with check (bucket_id = 'player-documents');
+
+insert into storage.buckets (id, name, public)
+select 'management-documents', 'management-documents', true
+where not exists (
+  select 1
+  from storage.buckets
+  where id = 'management-documents'
+);
+
+drop policy if exists "Public read management documents" on storage.objects;
+create policy "Public read management documents"
+on storage.objects
+for select
+to public
+using (bucket_id = 'management-documents');
+
+drop policy if exists "Public upload management documents" on storage.objects;
+create policy "Public upload management documents"
+on storage.objects
+for insert
+to public
+with check (bucket_id = 'management-documents');
+
+drop policy if exists "Public update management documents" on storage.objects;
+create policy "Public update management documents"
+on storage.objects
+for update
+to public
+using (bucket_id = 'management-documents')
+with check (bucket_id = 'management-documents');
