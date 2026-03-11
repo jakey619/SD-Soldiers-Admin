@@ -1620,7 +1620,9 @@ export default function App() {
           />
           <div className="brand-text">
             <div className="brand-title">San Diego Soldiers</div>
-            <div className="brand-subtitle">Team Management Dashboard</div>
+            <div className="brand-subtitle">
+              Team Management Dashboard | Version {APP_VERSION}
+            </div>
           </div>
         </div>
 
@@ -1757,7 +1759,7 @@ export default function App() {
               />
             </div>
 
-            <div className="filter-block">
+            <div className="filter-block players-filter-block">
               <div className="filter-block-title">Filter By Team</div>
               <div className="filter-chip-row">
                 <button
@@ -1782,7 +1784,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="filter-block">
+            <div className="filter-block players-filter-block">
               <div className="filter-block-title">Filter By Grade</div>
               <div className="filter-chip-row">
                 <button

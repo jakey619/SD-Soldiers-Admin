@@ -1421,4 +1421,8 @@ textarea {
   .summary-row {
     display: none;
   }
+
+  .players-filter-block {
+    display: none;
+  }
 }
