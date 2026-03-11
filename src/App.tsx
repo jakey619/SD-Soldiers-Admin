@@ -1629,24 +1629,15 @@ export default function App() {
             type="button"
             className="mobile-menu-button"
             onClick={() => setIsMobileMenuOpen((prev) => !prev)}
+            aria-label="Open navigation menu"
+            aria-expanded={isMobileMenuOpen}
           >
-            Menu
+            <span />
+            <span />
+            <span />
           </button>
           <div className="app-status">{status}</div>
         </div>
-      </div>
-
-      <div className="summary-row">
-        <div className="summary-card">
-          <div className="summary-label">Total Players</div>
-          <div className="summary-value">{players.length}</div>
-        </div>
-        {gradeCounts.map((entry) => (
-          <div key={entry.grade} className="summary-card">
-            <div className="summary-label">Grade {entry.grade}</div>
-            <div className="summary-value">{entry.count}</div>
-          </div>
-        ))}
       </div>
 
       <div className="tab-row">
@@ -1713,8 +1704,34 @@ export default function App() {
           >
             About
           </button>
+          <div className="mobile-menu-counts">
+            <div className="mobile-menu-counts-title">Player Counts</div>
+            <div className="mobile-menu-count-card">
+              <span>Total Players</span>
+              <strong>{players.length}</strong>
+            </div>
+            {gradeCounts.map((entry) => (
+              <div key={entry.grade} className="mobile-menu-count-card">
+                <span>Grade {entry.grade}</span>
+                <strong>{entry.count}</strong>
+              </div>
+            ))}
+          </div>
         </div>
         <div className="mobile-menu-footer">Version {APP_VERSION}</div>
+      </div>
+
+      <div className="summary-row">
+        <div className="summary-card">
+          <div className="summary-label">Total Players</div>
+          <div className="summary-value">{players.length}</div>
+        </div>
+        {gradeCounts.map((entry) => (
+          <div key={entry.grade} className="summary-card">
+            <div className="summary-label">Grade {entry.grade}</div>
+            <div className="summary-value">{entry.count}</div>
+          </div>
+        ))}
       </div>
 
       {tab === "players" ? (
