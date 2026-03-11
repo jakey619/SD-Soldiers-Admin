@@ -277,6 +277,10 @@ textarea {
   color: #dbeafe;
 }
 
+.mobile-card-action {
+  display: none;
+}
+
 .attendance-grid {
   grid-template-columns: 420px 1fr;
   gap: 24px;
@@ -913,6 +917,16 @@ textarea {
   margin-bottom: 10px;
 }
 
+.roster-team-title-button {
+  width: 100%;
+  text-align: left;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
 .roster-count {
   margin-bottom: 14px;
   font-size: 16px;
@@ -1036,7 +1050,15 @@ textarea {
   gap: 10px;
 }
 
+.roster-modal-card {
+  width: min(980px, 100%);
+}
+
 .roster-modal-row {
+  display: grid;
+  grid-template-columns: minmax(260px, 2fr) minmax(160px, 1fr) minmax(180px, 1fr);
+  gap: 12px;
+  align-items: center;
   padding: 12px 14px;
   border-radius: 14px;
   border: 1px solid rgba(148, 163, 184, 0.16);
@@ -1046,11 +1068,14 @@ textarea {
 .roster-modal-name {
   font-size: 18px;
   font-weight: 800;
-  margin-bottom: 6px;
 }
 
 .roster-modal-meta {
   color: #dbeafe;
+}
+
+.roster-modal-cell {
+  white-space: nowrap;
 }
 
 .mobile-menu-header,
@@ -1384,6 +1409,10 @@ textarea {
     min-width: 100%;
   }
 
+  .mobile-card-action {
+    display: inline-flex;
+  }
+
   .tab-row {
     display: none;
   }
@@ -1410,6 +1439,14 @@ textarea {
 
   .summary-row {
     display: none;
+  }
+
+  .roster-modal-row {
+    grid-template-columns: 1fr;
+  }
+
+  .roster-modal-cell {
+    white-space: normal;
   }
 
 }

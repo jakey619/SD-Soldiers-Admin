@@ -1684,6 +1684,16 @@ export default function App() {
                       {latestEvalMap.get(player.id) ? "Evaluated" : "Not Evaluated"}
                     </span>
                   </div>
+                  <button
+                    type="button"
+                    className="secondary-button mobile-card-action"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openEditModal(player);
+                    }}
+                  >
+                    Edit Player
+                  </button>
                 </button>
               ))}
               {filteredPlayers.length === 0 && (
@@ -1769,6 +1779,16 @@ export default function App() {
                           url={player.report_card_url}
                         />
                       </div>
+                      <button
+                        type="button"
+                        className="secondary-button mobile-card-action"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEditModal(player);
+                        }}
+                      >
+                        Edit Player
+                      </button>
                     </div>
                   </button>
                 );
@@ -2172,12 +2192,14 @@ export default function App() {
                 key={team}
                 className="card roster-summary-card"
               >
-                <div
-                  className="roster-team-title"
+                <button
+                  type="button"
+                  className="roster-team-title roster-team-title-button"
+                  onClick={() => setModalRosterTeam(team)}
                   onDoubleClick={() => setModalRosterTeam(team)}
                 >
                   {team}
-                </div>
+                </button>
                 <div className="roster-count">
                   Count: {rosterGroups[team].length}
                 </div>
@@ -3075,7 +3097,7 @@ export default function App() {
 
       {modalRosterTeam && (
         <div className="modal-overlay" onClick={() => setModalRosterTeam(null)}>
-          <div className="modal-card modal-card-narrow" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-card modal-card-wide roster-modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>{modalRosterTeam} Roster</h3>
               <button
@@ -3093,13 +3115,13 @@ export default function App() {
               ) : (
                 rosterGroups[modalRosterTeam].map((player) => (
                   <div key={player.id} className="roster-modal-row">
-                    <div className="roster-modal-name">
+                    <div className="roster-modal-name roster-modal-cell">
                       {player.last_name}, {player.first_name}
                     </div>
-                    <div className="roster-modal-meta">
+                    <div className="roster-modal-meta roster-modal-cell">
                       Jersey #{player.jersey_number || "-"}
                     </div>
-                    <div className="roster-modal-meta">
+                    <div className="roster-modal-meta roster-modal-cell">
                       Birthdate {formatBirthDate(player.birth_date)}
                     </div>
                   </div>
