@@ -39,13 +39,6 @@ type MainTab =
   | "roster-management"
   | "documents";
 
-type AttendanceFilter =
-  | "all"
-  | "checked-in"
-  | "not-checked-in"
-  | "evaluated"
-  | "not-evaluated";
-
 type Player = {
   id: string;
   first_name: string | null;
@@ -123,9 +116,6 @@ type EvalForm = {
 type TeamStats = {
   team: TeamOption;
   count: number;
-  checkedIn: number;
-  evaluated: number;
-  averageScore: number | null;
 };
 
 const APP_VERSION = "1.0.0";
@@ -160,17 +150,6 @@ const TEAM_OPTIONS: TeamOption[] = [
   "2032 Salute",
   "2032 Honor",
   "Undecided",
-];
-
-const ATTENDANCE_FILTER_OPTIONS: {
-  value: AttendanceFilter;
-  label: string;
-}[] = [
-  { value: "all", label: "All" },
-  { value: "checked-in", label: "Checked In" },
-  { value: "not-checked-in", label: "Not Checked In" },
-  { value: "evaluated", label: "Evaluated" },
-  { value: "not-evaluated", label: "Not Evaluated" },
 ];
 
 const MANAGEMENT_DOCUMENT_CATEGORIES: {
@@ -663,9 +642,6 @@ export default function App() {
   const [status, setStatus] = useState("Loading...");
   const [search, setSearch] = useState("");
   const [doorSearch, setDoorSearch] = useState("");
-  const [selectedTeams, setSelectedTeams] = useState<TeamOption[]>([]);
-  const [selectedGrades, setSelectedGrades] = useState<string[]>([]);
-  const [attendanceFilter, setAttendanceFilter] = useState<AttendanceFilter>("all");
   const [tab, setTab] = useState<MainTab>("players");
   const [selectedPlayerId, setSelectedPlayerId] = useState<string>("");
   const [activeRosterTeam, setActiveRosterTeam] = useState<TeamOption>("15u Salute");
@@ -679,6 +655,7 @@ export default function App() {
   const [managementDocumentFile, setManagementDocumentFile] = useState<File | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
+  const [modalRosterTeam, setModalRosterTeam] = useState<TeamOption | null>(null);
 
   const [isRegistrationOpen, setIsRegistrationOpen] = useState(false);
   const [isEvaluationOpen, setIsEvaluationOpen] = useState(false);
@@ -808,37 +785,10 @@ export default function App() {
 
   const filteredPlayers = useMemo(() => {
     return players.filter((player) => {
-      const latest = latestEvalMap.get(player.id);
-      const isEvaluated = Boolean(latest);
       const matchesSearch = playerSearchText(player).includes(search.toLowerCase());
-      const matchesTeam =
-        selectedTeams.length === 0 ||
-        selectedTeams.includes(player.suggested_team ?? "Undecided");
-      const matchesGrade =
-        selectedGrades.length === 0 ||
-        selectedGrades.includes(player.grade ?? "");
-
-      let matchesAttendanceFilter = true;
-      switch (attendanceFilter) {
-        case "checked-in":
-          matchesAttendanceFilter = player.checked_in;
-          break;
-        case "not-checked-in":
-          matchesAttendanceFilter = !player.checked_in;
-          break;
-        case "evaluated":
-          matchesAttendanceFilter = isEvaluated;
-          break;
-        case "not-evaluated":
-          matchesAttendanceFilter = !isEvaluated;
-          break;
-        default:
-          matchesAttendanceFilter = true;
-      }
-
-      return matchesSearch && matchesTeam && matchesGrade && matchesAttendanceFilter;
+      return matchesSearch;
     });
-  }, [players, search, selectedTeams, selectedGrades, attendanceFilter, latestEvalMap]);
+  }, [players, search]);
 
   const doorPlayers = useMemo(() => {
     const term = doorSearch.toLowerCase();
@@ -943,24 +893,13 @@ export default function App() {
       const teamPlayers = players.filter(
         (player) => (player.suggested_team ?? "Undecided") === team
       );
-      const scores = teamPlayers
-        .map((player) => latestEvalMap.get(player.id)?.total_score ?? null)
-        .filter((score): score is number => score != null);
-
-      const averageScore =
-        scores.length > 0
-          ? Number((scores.reduce((sum, score) => sum + score, 0) / scores.length).toFixed(1))
-          : null;
 
       return {
         team,
         count: teamPlayers.length,
-        checkedIn: teamPlayers.filter((player) => player.checked_in).length,
-        evaluated: teamPlayers.filter((player) => latestEvalMap.has(player.id)).length,
-        averageScore,
       };
     });
-  }, [players, latestEvalMap]);
+  }, [players]);
 
   function exportAllPlayersCsv() {
     const rows: string[][] = [
@@ -1424,67 +1363,6 @@ export default function App() {
     setRosterAddPlayerId("");
   }
 
-  function toggleTeamFilter(team: TeamOption) {
-    setSelectedTeams((prev) =>
-      prev.includes(team) ? prev.filter((entry) => entry !== team) : [...prev, team]
-    );
-  }
-
-  function toggleGradeFilter(grade: string) {
-    setSelectedGrades((prev) =>
-      prev.includes(grade) ? prev.filter((entry) => entry !== grade) : [...prev, grade]
-    );
-  }
-
-  function openRosterWindow(team: TeamOption) {
-    const rosterPlayers = rosterGroups[team] ?? [];
-    const popup = window.open("", "_blank", "width=980,height=720");
-
-    if (!popup) {
-      setStatus("Popup blocked. Allow popups to open roster windows.");
-      return;
-    }
-
-    const cards = rosterPlayers
-      .map((player) => {
-        const latest = latestEvalMap.get(player.id);
-
-        return `
-          <article style="padding:16px;border:1px solid #cbd5e1;border-radius:14px;background:#f8fafc;">
-            <h3 style="margin:0 0 8px 0;font:700 20px Arial,sans-serif;color:#0f172a;">
-              ${player.last_name ?? ""}, ${player.first_name ?? ""}
-            </h3>
-            <p style="margin:4px 0;color:#334155;">${player.grade_group ?? "-"} | ${player.grade ?? "-"} | ${player.school ?? "-"}</p>
-            <p style="margin:4px 0;color:#334155;">Jersey #${player.jersey_number ?? "-"} | Birthdate ${formatBirthDate(player.birth_date)} | Age ${calculateAge(player.birth_date) ?? "-"}</p>
-            <p style="margin:4px 0;color:#334155;">Checked In: ${player.checked_in ? "Yes" : "No"} | Latest Score: ${latest?.total_score ?? "-"}</p>
-          </article>
-        `;
-      })
-      .join("");
-
-    popup.document.write(`
-      <!doctype html>
-      <html lang="en">
-        <head>
-          <meta charset="utf-8" />
-          <title>${team} Roster</title>
-          <style>
-            body { margin: 0; padding: 24px; font-family: Arial, sans-serif; background: #e2e8f0; color: #0f172a; }
-            h1 { margin: 0 0 8px 0; }
-            p { margin: 0 0 18px 0; color: #475569; }
-            main { display: grid; gap: 12px; }
-          </style>
-        </head>
-        <body>
-          <h1>${team} Roster</h1>
-          <p>Players: ${rosterPlayers.length}</p>
-          <main>${cards || "<p>No players assigned.</p>"}</main>
-        </body>
-      </html>
-    `);
-    popup.document.close();
-  }
-
   async function handleRosterDrop(team: TeamOption) {
     if (!draggedPlayerId) return;
 
@@ -1759,56 +1637,6 @@ export default function App() {
               />
             </div>
 
-            <div className="filter-block players-filter-block">
-              <div className="filter-block-title">Filter By Team</div>
-              <div className="filter-chip-row">
-                <button
-                  type="button"
-                  className={`filter-chip ${selectedTeams.length === 0 ? "active" : ""}`}
-                  onClick={() => setSelectedTeams([])}
-                >
-                  All Teams
-                </button>
-                {TEAM_OPTIONS.map((team) => (
-                  <button
-                    key={team}
-                    type="button"
-                    className={`filter-chip ${
-                      selectedTeams.includes(team) ? "active" : ""
-                    }`}
-                    onClick={() => toggleTeamFilter(team)}
-                  >
-                    {team}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="filter-block players-filter-block">
-              <div className="filter-block-title">Filter By Grade</div>
-              <div className="filter-chip-row">
-                <button
-                  type="button"
-                  className={`filter-chip ${selectedGrades.length === 0 ? "active" : ""}`}
-                  onClick={() => setSelectedGrades([])}
-                >
-                  All Grades
-                </button>
-                {gradeOptions.map((grade) => (
-                  <button
-                    key={grade}
-                    type="button"
-                    className={`filter-chip ${
-                      selectedGrades.includes(grade) ? "active" : ""
-                    }`}
-                    onClick={() => toggleGradeFilter(grade)}
-                  >
-                    Grade {grade}
-                  </button>
-                ))}
-              </div>
-            </div>
-
             <div className="players-grid">
               {filteredPlayers.map((player) => (
                 <button
@@ -1885,71 +1713,6 @@ export default function App() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
-            </div>
-
-            <div className="filter-block">
-              <div className="filter-block-title">Filter By Team</div>
-              <div className="filter-chip-row">
-                <button
-                  type="button"
-                  className={`filter-chip ${selectedTeams.length === 0 ? "active" : ""}`}
-                  onClick={() => setSelectedTeams([])}
-                >
-                  All Teams
-                </button>
-                {TEAM_OPTIONS.map((team) => (
-                  <button
-                    key={team}
-                    type="button"
-                    className={`filter-chip ${
-                      selectedTeams.includes(team) ? "active" : ""
-                    }`}
-                    onClick={() => toggleTeamFilter(team)}
-                  >
-                    {team}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="filter-block">
-              <div className="filter-block-title">Filter By Grade</div>
-              <div className="filter-chip-row">
-                <button
-                  type="button"
-                  className={`filter-chip ${selectedGrades.length === 0 ? "active" : ""}`}
-                  onClick={() => setSelectedGrades([])}
-                >
-                  All Grades
-                </button>
-                {gradeOptions.map((grade) => (
-                  <button
-                    key={grade}
-                    type="button"
-                    className={`filter-chip ${
-                      selectedGrades.includes(grade) ? "active" : ""
-                    }`}
-                    onClick={() => toggleGradeFilter(grade)}
-                  >
-                    Grade {grade}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="filter-chip-row">
-              {ATTENDANCE_FILTER_OPTIONS.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  className={`filter-chip ${
-                    attendanceFilter === option.value ? "active" : ""
-                  }`}
-                  onClick={() => setAttendanceFilter(option.value)}
-                >
-                  {option.label}
-                </button>
-              ))}
             </div>
 
             <div className="checkin-list">
@@ -2274,11 +2037,6 @@ export default function App() {
               <div key={stat.team} className="team-stat-card">
                 <div className="team-stat-title">{stat.team}</div>
                 <div className="team-stat-line">Players: {stat.count}</div>
-                <div className="team-stat-line">Checked In: {stat.checkedIn}</div>
-                <div className="team-stat-line">Evaluated: {stat.evaluated}</div>
-                <div className="team-stat-line">
-                  Avg Score: {stat.averageScore ?? "-"}
-                </div>
               </div>
             ))}
           </div>
@@ -2413,9 +2171,13 @@ export default function App() {
               <div
                 key={team}
                 className="card roster-summary-card"
-                onDoubleClick={() => openRosterWindow(team)}
               >
-                <div className="roster-team-title">{team}</div>
+                <div
+                  className="roster-team-title"
+                  onDoubleClick={() => setModalRosterTeam(team)}
+                >
+                  {team}
+                </div>
                 <div className="roster-count">
                   Count: {rosterGroups[team].length}
                 </div>
@@ -3306,6 +3068,43 @@ export default function App() {
               <div className="detail-line">
                 <strong>Developer:</strong> Robret J. Rush, Jr.
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {modalRosterTeam && (
+        <div className="modal-overlay" onClick={() => setModalRosterTeam(null)}>
+          <div className="modal-card modal-card-narrow" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>{modalRosterTeam} Roster</h3>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setModalRosterTeam(null)}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="roster-modal-list">
+              {rosterGroups[modalRosterTeam].length === 0 ? (
+                <div className="empty-text">No players assigned.</div>
+              ) : (
+                rosterGroups[modalRosterTeam].map((player) => (
+                  <div key={player.id} className="roster-modal-row">
+                    <div className="roster-modal-name">
+                      {player.last_name}, {player.first_name}
+                    </div>
+                    <div className="roster-modal-meta">
+                      Jersey #{player.jersey_number || "-"}
+                    </div>
+                    <div className="roster-modal-meta">
+                      Birthdate {formatBirthDate(player.birth_date)}
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
