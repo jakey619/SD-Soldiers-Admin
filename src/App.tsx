@@ -225,6 +225,56 @@ function sanitizePhoneNumber(phone: string | null) {
   return phone.replace(/[^\d+]/g, "");
 }
 
+function sanitizeFilenamePart(value: string) {
+  const cleaned = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return cleaned || "roster-template";
+}
+
+function parseCsvRow(line: string) {
+  const cells: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === "," && !inQuotes) {
+      cells.push(current);
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  cells.push(current);
+  return cells.map((cell) => cell.trim());
+}
+
+function parseCsvText(text: string) {
+  return text
+    .replace(/^\uFEFF/, "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map(parseCsvRow);
+}
+
 function getGuardian1Phone(player: Player) {
   return player.guardian_1_phone ?? player.parent_phone;
 }
@@ -741,6 +791,8 @@ export default function App() {
   const [rosterAddPlayerId, setRosterAddPlayerId] = useState("");
   const [draggedPlayerId, setDraggedPlayerId] = useState<string | null>(null);
   const [rosterManagementSearch, setRosterManagementSearch] = useState("");
+  const [rosterTemplateName, setRosterTemplateName] = useState("");
+  const [rosterImportFile, setRosterImportFile] = useState<File | null>(null);
   const [managementDocuments, setManagementDocuments] = useState<ManagementDocument[]>([]);
   const [managementDocumentTitle, setManagementDocumentTitle] = useState("");
   const [managementDocumentCategory, setManagementDocumentCategory] =
@@ -1520,6 +1572,166 @@ export default function App() {
     }
 
     await updateSuggestedTeam(player, team);
+  }
+
+  function downloadRosterImportTemplate() {
+    const templateName = rosterTemplateName.trim();
+    const rows: string[][] = [
+      [
+        "Team",
+        "First Name",
+        "Last Name",
+        "Grade",
+        "School",
+        "Jersey Number",
+        "Player Phone",
+        "Player Email",
+        "Uniform Size",
+        "Guardian 1 Name",
+        "Guardian 1 Phone",
+        "Guardian 1 Email",
+        "Guardian 2 Name",
+        "Guardian 2 Phone",
+        "Guardian 2 Email",
+        "Notes",
+      ],
+      [
+        activeRosterTeam,
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+      ],
+    ];
+
+    const filename = `${sanitizeFilenamePart(
+      templateName || `${activeRosterTeam} roster`
+    )}.csv`;
+    downloadCsv(filename, rows);
+    setStatus(`Downloaded roster upload template: ${filename}`);
+  }
+
+  async function importRosterTemplate() {
+    if (!rosterImportFile) {
+      setStatus("Choose a filled roster template to upload.");
+      return;
+    }
+
+    const text = await rosterImportFile.text();
+    const rows = parseCsvText(text);
+
+    if (rows.length < 2) {
+      setStatus("The uploaded roster file is empty.");
+      return;
+    }
+
+    const headers = rows[0];
+    const requiredHeaders = ["Team", "First Name", "Last Name"];
+    const missingHeaders = requiredHeaders.filter(
+      (header) => !headers.includes(header)
+    );
+
+    if (missingHeaders.length > 0) {
+      setStatus(`Template is missing required columns: ${missingHeaders.join(", ")}`);
+      return;
+    }
+
+    const headerIndex = new Map(headers.map((header, index) => [header, index]));
+    const getValue = (row: string[], key: string) =>
+      row[headerIndex.get(key) ?? -1]?.trim() ?? "";
+
+    let createdCount = 0;
+    let updatedCount = 0;
+
+    for (const row of rows.slice(1)) {
+      const firstName = getValue(row, "First Name");
+      const lastName = getValue(row, "Last Name");
+      const grade = getValue(row, "Grade");
+      const teamValue = getValue(row, "Team");
+
+      if (!firstName || !lastName) {
+        continue;
+      }
+
+      const matchedTeam = TEAM_OPTIONS.find((team) => team === teamValue) ?? "Undecided";
+      const existingPlayer = players.find((player) => {
+        const sameFirst =
+          (player.first_name ?? "").trim().toLowerCase() === firstName.toLowerCase();
+        const sameLast =
+          (player.last_name ?? "").trim().toLowerCase() === lastName.toLowerCase();
+        const sameGrade =
+          !grade || (player.grade ?? "").trim().toLowerCase() === grade.toLowerCase();
+
+        return sameFirst && sameLast && sameGrade;
+      });
+
+      const payload = {
+        first_name: firstName,
+        last_name: lastName,
+        grade: grade || null,
+        grade_group: grade ? groupFromGrade(grade) : null,
+        school: getValue(row, "School") || null,
+        jersey_number: getValue(row, "Jersey Number") || null,
+        player_phone: getValue(row, "Player Phone") || null,
+        player_email: getValue(row, "Player Email") || null,
+        uniform_size: getValue(row, "Uniform Size") || null,
+        guardian_1_name: getValue(row, "Guardian 1 Name") || null,
+        guardian_1_phone: getValue(row, "Guardian 1 Phone") || null,
+        guardian_1_email: getValue(row, "Guardian 1 Email") || null,
+        guardian_2_name: getValue(row, "Guardian 2 Name") || null,
+        guardian_2_phone: getValue(row, "Guardian 2 Phone") || null,
+        guardian_2_email: getValue(row, "Guardian 2 Email") || null,
+        parent_phone: getValue(row, "Guardian 1 Phone") || null,
+        parent_email: getValue(row, "Guardian 1 Email") || null,
+        suggested_team: matchedTeam,
+        notes: getValue(row, "Notes") || null,
+      };
+
+      if (existingPlayer) {
+        const { error } = await supabase
+          .from("players")
+          .update(payload)
+          .eq("id", existingPlayer.id);
+
+        if (error) {
+          setStatus(`Roster upload error: ${error.message}`);
+          return;
+        }
+
+        updatedCount += 1;
+      } else {
+        const { error } = await supabase.from("players").insert([
+          {
+            ...payload,
+            checked_in: false,
+          },
+        ]);
+
+        if (error) {
+          setStatus(`Roster upload error: ${error.message}`);
+          return;
+        }
+
+        createdCount += 1;
+      }
+    }
+
+    await refreshAll();
+    setRosterImportFile(null);
+    setStatus(
+      `Roster upload complete. Updated ${updatedCount} player(s), created ${createdCount} player(s).`
+    );
   }
 
   async function uploadManagementDoc(e: FormEvent<HTMLFormElement>) {
@@ -2422,6 +2634,35 @@ export default function App() {
                 <h2 className="panel-title">Player Pool</h2>
               </div>
               <div className="empty-text">Drag a player onto a team.</div>
+            </div>
+
+            <div className="roster-import-tools">
+              <input
+                className="input"
+                placeholder="Roster template name"
+                value={rosterTemplateName}
+                onChange={(e) => setRosterTemplateName(e.target.value)}
+              />
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={downloadRosterImportTemplate}
+              >
+                Download Upload Template
+              </button>
+              <input
+                className="input"
+                type="file"
+                accept=".csv,text/csv"
+                onChange={(e) => setRosterImportFile(e.target.files?.[0] ?? null)}
+              />
+              <button
+                type="button"
+                className="primary-button"
+                onClick={importRosterTemplate}
+              >
+                Upload Template
+              </button>
             </div>
 
             <input

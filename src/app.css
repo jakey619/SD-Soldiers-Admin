@@ -508,6 +508,14 @@ textarea {
   gap: 14px;
 }
 
+.roster-import-tools {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto minmax(220px, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
 .roster-drop-zone {
   min-height: 180px;
   padding: 14px;
@@ -1361,6 +1369,10 @@ textarea {
 
   .roster-management-pool {
     position: static;
+  }
+
+  .roster-import-tools {
+    grid-template-columns: 1fr;
   }
 
   .roster-management-left-scroll {
