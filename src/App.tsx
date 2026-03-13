@@ -197,6 +197,11 @@ function formatBirthDate(birthDate: string | null) {
   return date.toLocaleDateString();
 }
 
+function sanitizePhoneNumber(phone: string | null) {
+  if (!phone) return "";
+  return phone.replace(/[^\d+]/g, "");
+}
+
 function createEmptyPlayerForm(suggestedTeam: TeamOption = "Undecided") {
   return {
     first_name: "",
@@ -635,6 +640,49 @@ function NavButton({
   );
 }
 
+function ContactLink({
+  type,
+  value,
+}: {
+  type: "phone" | "email";
+  value: string | null;
+}) {
+  if (!value) return <>-</>;
+
+  const href =
+    type === "phone"
+      ? `tel:${sanitizePhoneNumber(value)}`
+      : `mailto:${value.trim()}`;
+
+  return (
+    <a className="contact-link" href={href} onClick={(e) => e.stopPropagation()}>
+      {value}
+    </a>
+  );
+}
+
+function SummaryListCard({
+  title,
+  items,
+}: {
+  title: string;
+  items: { label: string; count: number }[];
+}) {
+  return (
+    <div className="summary-card summary-card-compact">
+      <div className="summary-label">{title}</div>
+      <div className="summary-list">
+        {items.map((item) => (
+          <div key={item.label} className="summary-list-row">
+            <span>{item.label}</span>
+            <strong>{item.count}</strong>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [latestEvaluations, setLatestEvaluations] = useState<LatestEvaluation[]>([]);
@@ -656,6 +704,7 @@ export default function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [modalRosterTeam, setModalRosterTeam] = useState<TeamOption | null>(null);
+  const [viewingPlayerId, setViewingPlayerId] = useState<string | null>(null);
 
   const [isRegistrationOpen, setIsRegistrationOpen] = useState(false);
   const [isEvaluationOpen, setIsEvaluationOpen] = useState(false);
@@ -682,6 +731,7 @@ export default function App() {
   const [editReportCardFile, setEditReportCardFile] = useState<File | null>(null);
 
   const selectedPlayer = players.find((p) => p.id === selectedPlayerId) ?? null;
+  const viewingPlayer = players.find((p) => p.id === viewingPlayerId) ?? null;
 
   async function loadPlayers() {
     const { data, error } = await supabase
@@ -884,7 +934,7 @@ export default function App() {
   }, [players, gradeOptions]);
 
   function goToTab(nextTab: MainTab) {
-    setTab(nextTab);
+    setTab(nextTab === "rosters" ? "roster-management" : nextTab);
     setIsMobileMenuOpen(false);
   }
 
@@ -1528,7 +1578,6 @@ export default function App() {
           onClick={() => goToTab("attendance")}
         />
         <NavButton label="Tryouts" active={tab === "door"} onClick={() => goToTab("door")} />
-        <NavButton label="Rosters" active={tab === "rosters"} onClick={() => goToTab("rosters")} />
         <NavButton
           label="Roster Management"
           active={tab === "roster-management"}
@@ -1563,7 +1612,6 @@ export default function App() {
             onClick={() => goToTab("attendance")}
           />
           <NavButton label="Tryouts" active={tab === "door"} onClick={() => goToTab("door")} />
-          <NavButton label="Rosters" active={tab === "rosters"} onClick={() => goToTab("rosters")} />
           <NavButton
             label="Roster Management"
             active={tab === "roster-management"}
@@ -1590,7 +1638,7 @@ export default function App() {
               <span>Total Players</span>
               <strong>{players.length}</strong>
             </div>
-            {gradeCounts.map((entry) => (
+            {gradeCounts.slice(0, 4).map((entry) => (
               <div key={entry.grade} className="mobile-menu-count-card">
                 <span>Grade {entry.grade}</span>
                 <strong>{entry.count}</strong>
@@ -1602,16 +1650,24 @@ export default function App() {
       </div>
 
       <div className="summary-row">
+        <SummaryListCard
+          title="Grade Counts"
+          items={gradeCounts.map((entry) => ({
+            label: `Grade ${entry.grade}`,
+            count: entry.count,
+          }))}
+        />
+        <SummaryListCard
+          title="Team Counts"
+          items={teamStats.map((entry) => ({
+            label: entry.team,
+            count: entry.count,
+          }))}
+        />
         <div className="summary-card">
           <div className="summary-label">Total Players</div>
           <div className="summary-value">{players.length}</div>
         </div>
-        {gradeCounts.map((entry) => (
-          <div key={entry.grade} className="summary-card">
-            <div className="summary-label">Grade {entry.grade}</div>
-            <div className="summary-value">{entry.count}</div>
-          </div>
-        ))}
       </div>
 
       {tab === "players" ? (
@@ -1668,32 +1724,18 @@ export default function App() {
                   <div className="player-card-meta">
                     Team: {player.suggested_team ?? "Undecided"}
                   </div>
-                  <div className="badge-row">
-                    <span
-                      className={`badge ${
-                        player.checked_in ? "badge-good" : "badge-neutral"
-                      }`}
+                  <div className="player-card-actions">
+                    <button
+                      type="button"
+                      className="secondary-button player-card-action-button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setViewingPlayerId(player.id);
+                      }}
                     >
-                      {player.checked_in ? "Checked In" : "Not Checked In"}
-                    </span>
-                    <span
-                      className={`badge ${
-                        latestEvalMap.get(player.id) ? "badge-info" : "badge-neutral"
-                      }`}
-                    >
-                      {latestEvalMap.get(player.id) ? "Evaluated" : "Not Evaluated"}
-                    </span>
+                      View Details
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    className="secondary-button mobile-card-action"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openEditModal(player);
-                    }}
-                  >
-                    Edit Player
-                  </button>
                 </button>
               ))}
               {filteredPlayers.length === 0 && (
@@ -1907,13 +1949,16 @@ export default function App() {
                     </span>
                   </div>
                   <div className="detail-line">
-                    <strong>Player Cell:</strong> {selectedPlayer.player_phone || "-"}
+                    <strong>Player Cell:</strong>{" "}
+                    <ContactLink type="phone" value={selectedPlayer.player_phone} />
                   </div>
                   <div className="detail-line">
-                    <strong>Parent Cell:</strong> {selectedPlayer.parent_phone || "-"}
+                    <strong>Parent Cell:</strong>{" "}
+                    <ContactLink type="phone" value={selectedPlayer.parent_phone} />
                   </div>
                   <div className="detail-line">
-                    <strong>Parent Email:</strong> {selectedPlayer.parent_email || "-"}
+                    <strong>Parent Email:</strong>{" "}
+                    <ContactLink type="email" value={selectedPlayer.parent_email} />
                   </div>
                   <div className="detail-line">
                     <strong>Notes:</strong> {selectedPlayer.notes || "-"}
@@ -2599,6 +2644,94 @@ export default function App() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {viewingPlayer && (
+        <div className="modal-overlay" onClick={() => setViewingPlayerId(null)}>
+          <div className="modal-card modal-card-narrow" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Player Details</h3>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setViewingPlayerId(null)}
+              >
+                Ã—
+              </button>
+            </div>
+
+            <div className="player-details-modal">
+              <div className="selected-player-top">
+                <PlayerPhoto
+                  src={viewingPlayer.photo_url}
+                  alt={`${viewingPlayer.first_name ?? ""} ${viewingPlayer.last_name ?? ""}`}
+                  large
+                />
+                <div className="selected-player-info">
+                  <div className="player-name">
+                    {viewingPlayer.last_name}, {viewingPlayer.first_name}
+                  </div>
+                  <div className="player-meta">
+                    {viewingPlayer.grade_group ?? "-"} | Grade {viewingPlayer.grade ?? "-"}
+                  </div>
+                  <div className="player-meta">{viewingPlayer.school ?? "-"}</div>
+                  <div className="player-meta">
+                    Jersey #{viewingPlayer.jersey_number || "-"} | Birthdate{" "}
+                    {formatBirthDate(viewingPlayer.birth_date)} | Age{" "}
+                    {calculateAge(viewingPlayer.birth_date) ?? "-"}
+                  </div>
+                </div>
+              </div>
+
+              <div className="selected-player-details">
+                <div className="detail-line">
+                  <strong>Player Cell:</strong>{" "}
+                  <ContactLink type="phone" value={viewingPlayer.player_phone} />
+                </div>
+                <div className="detail-line">
+                  <strong>Parent Cell:</strong>{" "}
+                  <ContactLink type="phone" value={viewingPlayer.parent_phone} />
+                </div>
+                <div className="detail-line">
+                  <strong>Parent Email:</strong>{" "}
+                  <ContactLink type="email" value={viewingPlayer.parent_email} />
+                </div>
+                <div className="detail-line">
+                  <strong>Team:</strong> {viewingPlayer.suggested_team ?? "Undecided"}
+                </div>
+                <div className="detail-line">
+                  <strong>Birth Certificate:</strong>
+                  <span className="detail-inline-status">
+                    <DocumentStatus
+                      label="On File"
+                      url={viewingPlayer.birth_certificate_url}
+                    />
+                  </span>
+                </div>
+                <div className="detail-line">
+                  <strong>Report Card:</strong>
+                  <span className="detail-inline-status">
+                    <DocumentStatus
+                      label="On File"
+                      url={viewingPlayer.report_card_url}
+                    />
+                  </span>
+                </div>
+                <div className="detail-line">
+                  <strong>Notes:</strong> {viewingPlayer.notes || "-"}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setViewingPlayerId(null)}
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

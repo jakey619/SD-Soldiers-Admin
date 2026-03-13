@@ -27,11 +27,26 @@ textarea {
 }
 
 .app-shell {
+  position: relative;
+  isolation: isolate;
   min-height: 100vh;
   padding: 24px;
   background:
     radial-gradient(circle at 35% 25%, rgba(20, 34, 170, 0.18) 0%, transparent 32%),
     radial-gradient(circle at 70% 70%, rgba(16, 28, 140, 0.16) 0%, transparent 28%);
+}
+
+.app-shell::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background:
+    radial-gradient(circle, rgba(255, 255, 255, 0.05) 0%, transparent 58%),
+    url("./assets/soldiers-logo.png") center 56% / min(56vw, 620px) no-repeat;
+  opacity: 0.12;
+  filter: grayscale(0.1);
 }
 
 .top-bar {
@@ -151,6 +166,29 @@ textarea {
   box-shadow:
     0 10px 28px rgba(0, 0, 0, 0.22),
     inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.summary-card-compact {
+  padding: 14px 16px;
+}
+
+.summary-list {
+  display: grid;
+  gap: 8px;
+}
+
+.summary-list-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  color: #dbeafe;
+  font-size: 14px;
+}
+
+.summary-list-row strong {
+  color: #f8fafc;
+  font-size: 16px;
 }
 
 .summary-label {
@@ -279,6 +317,16 @@ textarea {
 
 .mobile-card-action {
   display: none;
+}
+
+.player-card-actions {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 4px;
+}
+
+.player-card-action-button {
+  width: auto;
 }
 
 .attendance-grid {
@@ -760,6 +808,16 @@ textarea {
   color: #dbeafe;
 }
 
+.contact-link {
+  color: #93c5fd;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.contact-link:hover {
+  text-decoration: underline;
+}
+
 .badge-row {
   display: flex;
   flex-wrap: wrap;
@@ -1043,6 +1101,11 @@ textarea {
 .about-stack {
   display: grid;
   gap: 10px;
+}
+
+.player-details-modal {
+  display: grid;
+  gap: 18px;
 }
 
 .roster-modal-list {
