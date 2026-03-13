@@ -1,7 +1,15 @@
 alter table public.players
   add column if not exists jersey_number text,
   add column if not exists birth_certificate_url text,
-  add column if not exists report_card_url text;
+  add column if not exists report_card_url text,
+  add column if not exists player_email text,
+  add column if not exists uniform_size text,
+  add column if not exists guardian_1_name text,
+  add column if not exists guardian_1_phone text,
+  add column if not exists guardian_1_email text,
+  add column if not exists guardian_2_name text,
+  add column if not exists guardian_2_phone text,
+  add column if not exists guardian_2_email text;
 
 insert into storage.buckets (id, name, public)
 select 'player-documents', 'player-documents', true

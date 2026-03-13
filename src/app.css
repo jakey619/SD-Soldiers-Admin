@@ -1108,6 +1108,41 @@ textarea {
   gap: 18px;
 }
 
+.version-history {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.version-history-title {
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #93c5fd;
+}
+
+.version-history-card {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.version-history-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #e2e8f0;
+}
+
+.version-history-notes {
+  color: #dbeafe;
+  font-size: 14px;
+}
+
 .roster-modal-list {
   display: grid;
   gap: 10px;

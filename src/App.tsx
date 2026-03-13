@@ -49,6 +49,14 @@ type Player = {
   birth_date: string | null;
   jersey_number: string | null;
   player_phone: string | null;
+  player_email: string | null;
+  uniform_size: string | null;
+  guardian_1_name?: string | null;
+  guardian_1_phone?: string | null;
+  guardian_1_email?: string | null;
+  guardian_2_name?: string | null;
+  guardian_2_phone?: string | null;
+  guardian_2_email?: string | null;
   parent_phone: string | null;
   parent_email: string | null;
   registered_at: string | null;
@@ -118,7 +126,22 @@ type TeamStats = {
   count: number;
 };
 
-const APP_VERSION = "1.0.0";
+const APP_VERSION = "1.1.0";
+
+const VERSION_HISTORY = [
+  {
+    version: "1.1.0",
+    date: "March 13, 2026",
+    notes:
+      "Added guardian contact fields, player email, uniform size, richer player details, and version history in About.",
+  },
+  {
+    version: "1.0.0",
+    date: "March 2026",
+    notes:
+      "Initial San Diego Soldiers management dashboard release with player registration, evaluations, rosters, and documents.",
+  },
+] as const;
 
 type ManagementDocumentCategory =
   | "insurance"
@@ -202,6 +225,14 @@ function sanitizePhoneNumber(phone: string | null) {
   return phone.replace(/[^\d+]/g, "");
 }
 
+function getGuardian1Phone(player: Player) {
+  return player.guardian_1_phone ?? player.parent_phone;
+}
+
+function getGuardian1Email(player: Player) {
+  return player.guardian_1_email ?? player.parent_email;
+}
+
 function createEmptyPlayerForm(suggestedTeam: TeamOption = "Undecided") {
   return {
     first_name: "",
@@ -211,8 +242,14 @@ function createEmptyPlayerForm(suggestedTeam: TeamOption = "Undecided") {
     birth_date: "",
     jersey_number: "",
     player_phone: "",
-    parent_phone: "",
-    parent_email: "",
+    player_email: "",
+    uniform_size: "",
+    guardian_1_name: "",
+    guardian_1_phone: "",
+    guardian_1_email: "",
+    guardian_2_name: "",
+    guardian_2_phone: "",
+    guardian_2_email: "",
     suggested_team: suggestedTeam,
   };
 }
@@ -227,6 +264,14 @@ function playerSearchText(player: Player) {
     player.birth_date,
     player.jersey_number,
     player.player_phone,
+    player.player_email,
+    player.uniform_size,
+    player.guardian_1_name,
+    getGuardian1Phone(player),
+    getGuardian1Email(player),
+    player.guardian_2_name,
+    player.guardian_2_phone,
+    player.guardian_2_email,
     player.parent_phone,
     player.parent_email,
     player.suggested_team,
@@ -967,8 +1012,14 @@ export default function App() {
         "Latest Score",
         "Evaluated",
         "Player Phone",
-        "Parent Phone",
-        "Parent Email",
+        "Player Email",
+        "Uniform Size",
+        "Guardian 1 Name",
+        "Guardian 1 Phone",
+        "Guardian 1 Email",
+        "Guardian 2 Name",
+        "Guardian 2 Phone",
+        "Guardian 2 Email",
         "Birth Certificate",
         "Report Card",
         "Notes",
@@ -998,8 +1049,14 @@ export default function App() {
         latest?.total_score?.toString() ?? "",
         latest ? "Yes" : "No",
         player.player_phone ?? "",
-        player.parent_phone ?? "",
-        player.parent_email ?? "",
+        player.player_email ?? "",
+        player.uniform_size ?? "",
+        player.guardian_1_name ?? "",
+        getGuardian1Phone(player) ?? "",
+        getGuardian1Email(player) ?? "",
+        player.guardian_2_name ?? "",
+        player.guardian_2_phone ?? "",
+        player.guardian_2_email ?? "",
         player.birth_certificate_url ? "Yes" : "No",
         player.report_card_url ? "Yes" : "No",
         player.notes ?? "",
@@ -1027,8 +1084,14 @@ export default function App() {
         "Latest Score",
         "Evaluator",
         "Player Phone",
-        "Parent Phone",
-        "Parent Email",
+        "Player Email",
+        "Uniform Size",
+        "Guardian 1 Name",
+        "Guardian 1 Phone",
+        "Guardian 1 Email",
+        "Guardian 2 Name",
+        "Guardian 2 Phone",
+        "Guardian 2 Email",
         "Birth Certificate",
         "Report Card",
       ],
@@ -1051,8 +1114,14 @@ export default function App() {
           latest?.total_score?.toString() ?? "",
           latest?.evaluator ?? "",
           player.player_phone ?? "",
-          player.parent_phone ?? "",
-          player.parent_email ?? "",
+          player.player_email ?? "",
+          player.uniform_size ?? "",
+          player.guardian_1_name ?? "",
+          getGuardian1Phone(player) ?? "",
+          getGuardian1Email(player) ?? "",
+          player.guardian_2_name ?? "",
+          player.guardian_2_phone ?? "",
+          player.guardian_2_email ?? "",
           player.birth_certificate_url ? "Yes" : "No",
           player.report_card_url ? "Yes" : "No",
         ]);
@@ -1142,8 +1211,14 @@ export default function App() {
       birth_date: player.birth_date ?? "",
       jersey_number: player.jersey_number ?? "",
       player_phone: player.player_phone ?? "",
-      parent_phone: player.parent_phone ?? "",
-      parent_email: player.parent_email ?? "",
+      player_email: player.player_email ?? "",
+      uniform_size: player.uniform_size ?? "",
+      guardian_1_name: player.guardian_1_name ?? "",
+      guardian_1_phone: getGuardian1Phone(player) ?? "",
+      guardian_1_email: getGuardian1Email(player) ?? "",
+      guardian_2_name: player.guardian_2_name ?? "",
+      guardian_2_phone: player.guardian_2_phone ?? "",
+      guardian_2_email: player.guardian_2_email ?? "",
       suggested_team: player.suggested_team ?? "Undecided",
       notes: player.notes ?? "",
     });
@@ -1239,8 +1314,16 @@ export default function App() {
           birth_date: form.birth_date || null,
           jersey_number: form.jersey_number || null,
           player_phone: form.player_phone || null,
-          parent_phone: form.parent_phone || null,
-          parent_email: form.parent_email || null,
+          player_email: form.player_email || null,
+          uniform_size: form.uniform_size || null,
+          guardian_1_name: form.guardian_1_name || null,
+          guardian_1_phone: form.guardian_1_phone || null,
+          guardian_1_email: form.guardian_1_email || null,
+          guardian_2_name: form.guardian_2_name || null,
+          guardian_2_phone: form.guardian_2_phone || null,
+          guardian_2_email: form.guardian_2_email || null,
+          parent_phone: form.guardian_1_phone || null,
+          parent_email: form.guardian_1_email || null,
           checked_in: true,
           suggested_team: form.suggested_team,
           notes: "Onsite registration",
@@ -1305,8 +1388,16 @@ export default function App() {
       birth_date: editForm.birth_date || null,
       jersey_number: editForm.jersey_number || null,
       player_phone: editForm.player_phone || null,
-      parent_phone: editForm.parent_phone || null,
-      parent_email: editForm.parent_email || null,
+      player_email: editForm.player_email || null,
+      uniform_size: editForm.uniform_size || null,
+      guardian_1_name: editForm.guardian_1_name || null,
+      guardian_1_phone: editForm.guardian_1_phone || null,
+      guardian_1_email: editForm.guardian_1_email || null,
+      guardian_2_name: editForm.guardian_2_name || null,
+      guardian_2_phone: editForm.guardian_2_phone || null,
+      guardian_2_email: editForm.guardian_2_email || null,
+      parent_phone: editForm.guardian_1_phone || null,
+      parent_email: editForm.guardian_1_email || null,
       suggested_team: editForm.suggested_team,
       notes: editForm.notes || null,
       photo_url: currentPlayer?.photo_url ?? null,
@@ -1953,12 +2044,33 @@ export default function App() {
                     <ContactLink type="phone" value={selectedPlayer.player_phone} />
                   </div>
                   <div className="detail-line">
-                    <strong>Parent Cell:</strong>{" "}
-                    <ContactLink type="phone" value={selectedPlayer.parent_phone} />
+                    <strong>Player Email:</strong>{" "}
+                    <ContactLink type="email" value={selectedPlayer.player_email} />
                   </div>
                   <div className="detail-line">
-                    <strong>Parent Email:</strong>{" "}
-                    <ContactLink type="email" value={selectedPlayer.parent_email} />
+                    <strong>Uniform Size:</strong> {selectedPlayer.uniform_size || "-"}
+                  </div>
+                  <div className="detail-line">
+                    <strong>Guardian #1:</strong> {selectedPlayer.guardian_1_name || "-"}
+                  </div>
+                  <div className="detail-line">
+                    <strong>Guardian #1 Phone:</strong>{" "}
+                    <ContactLink type="phone" value={getGuardian1Phone(selectedPlayer)} />
+                  </div>
+                  <div className="detail-line">
+                    <strong>Guardian #1 Email:</strong>{" "}
+                    <ContactLink type="email" value={getGuardian1Email(selectedPlayer)} />
+                  </div>
+                  <div className="detail-line">
+                    <strong>Guardian #2:</strong> {selectedPlayer.guardian_2_name || "-"}
+                  </div>
+                  <div className="detail-line">
+                    <strong>Guardian #2 Phone:</strong>{" "}
+                    <ContactLink type="phone" value={selectedPlayer.guardian_2_phone ?? null} />
+                  </div>
+                  <div className="detail-line">
+                    <strong>Guardian #2 Email:</strong>{" "}
+                    <ContactLink type="email" value={selectedPlayer.guardian_2_email ?? null} />
                   </div>
                   <div className="detail-line">
                     <strong>Notes:</strong> {selectedPlayer.notes || "-"}
@@ -2616,18 +2728,66 @@ export default function App() {
               />
               <input
                 className="input"
-                placeholder="Parent Cell"
-                value={form.parent_phone}
+                placeholder="Player Email"
+                value={form.player_email}
                 onChange={(e) =>
-                  setForm({ ...form, parent_phone: e.target.value })
+                  setForm({ ...form, player_email: e.target.value })
                 }
               />
               <input
                 className="input"
-                placeholder="Parent Email"
-                value={form.parent_email}
+                placeholder="Uniform Size"
+                value={form.uniform_size}
                 onChange={(e) =>
-                  setForm({ ...form, parent_email: e.target.value })
+                  setForm({ ...form, uniform_size: e.target.value })
+                }
+              />
+              <input
+                className="input"
+                placeholder="Guardian #1 Name"
+                value={form.guardian_1_name}
+                onChange={(e) =>
+                  setForm({ ...form, guardian_1_name: e.target.value })
+                }
+              />
+              <input
+                className="input"
+                placeholder="Guardian #1 Phone"
+                value={form.guardian_1_phone}
+                onChange={(e) =>
+                  setForm({ ...form, guardian_1_phone: e.target.value })
+                }
+              />
+              <input
+                className="input"
+                placeholder="Guardian #1 Email"
+                value={form.guardian_1_email}
+                onChange={(e) =>
+                  setForm({ ...form, guardian_1_email: e.target.value })
+                }
+              />
+              <input
+                className="input"
+                placeholder="Guardian #2 Name"
+                value={form.guardian_2_name}
+                onChange={(e) =>
+                  setForm({ ...form, guardian_2_name: e.target.value })
+                }
+              />
+              <input
+                className="input"
+                placeholder="Guardian #2 Phone"
+                value={form.guardian_2_phone}
+                onChange={(e) =>
+                  setForm({ ...form, guardian_2_phone: e.target.value })
+                }
+              />
+              <input
+                className="input"
+                placeholder="Guardian #2 Email"
+                value={form.guardian_2_email}
+                onChange={(e) =>
+                  setForm({ ...form, guardian_2_email: e.target.value })
                 }
               />
 
@@ -2691,12 +2851,33 @@ export default function App() {
                   <ContactLink type="phone" value={viewingPlayer.player_phone} />
                 </div>
                 <div className="detail-line">
-                  <strong>Parent Cell:</strong>{" "}
-                  <ContactLink type="phone" value={viewingPlayer.parent_phone} />
+                  <strong>Player Email:</strong>{" "}
+                  <ContactLink type="email" value={viewingPlayer.player_email} />
                 </div>
                 <div className="detail-line">
-                  <strong>Parent Email:</strong>{" "}
-                  <ContactLink type="email" value={viewingPlayer.parent_email} />
+                  <strong>Uniform Size:</strong> {viewingPlayer.uniform_size || "-"}
+                </div>
+                <div className="detail-line">
+                  <strong>Guardian #1:</strong> {viewingPlayer.guardian_1_name || "-"}
+                </div>
+                <div className="detail-line">
+                  <strong>Guardian #1 Phone:</strong>{" "}
+                  <ContactLink type="phone" value={getGuardian1Phone(viewingPlayer)} />
+                </div>
+                <div className="detail-line">
+                  <strong>Guardian #1 Email:</strong>{" "}
+                  <ContactLink type="email" value={getGuardian1Email(viewingPlayer)} />
+                </div>
+                <div className="detail-line">
+                  <strong>Guardian #2:</strong> {viewingPlayer.guardian_2_name || "-"}
+                </div>
+                <div className="detail-line">
+                  <strong>Guardian #2 Phone:</strong>{" "}
+                  <ContactLink type="phone" value={viewingPlayer.guardian_2_phone ?? null} />
+                </div>
+                <div className="detail-line">
+                  <strong>Guardian #2 Email:</strong>{" "}
+                  <ContactLink type="email" value={viewingPlayer.guardian_2_email ?? null} />
                 </div>
                 <div className="detail-line">
                   <strong>Team:</strong> {viewingPlayer.suggested_team ?? "Undecided"}
@@ -2854,21 +3035,75 @@ export default function App() {
                   }
                 />
               </FormFieldRow>
-              <FormFieldRow label="Parent Cell">
+              <FormFieldRow label="Player Email">
                 <input
                   className="input"
-                  value={editForm.parent_phone}
+                  value={editForm.player_email}
                   onChange={(e) =>
-                    setEditForm({ ...editForm, parent_phone: e.target.value })
+                    setEditForm({ ...editForm, player_email: e.target.value })
                   }
                 />
               </FormFieldRow>
-              <FormFieldRow label="Parent Email">
+              <FormFieldRow label="Uniform Size">
                 <input
                   className="input"
-                  value={editForm.parent_email}
+                  value={editForm.uniform_size}
                   onChange={(e) =>
-                    setEditForm({ ...editForm, parent_email: e.target.value })
+                    setEditForm({ ...editForm, uniform_size: e.target.value })
+                  }
+                />
+              </FormFieldRow>
+              <FormFieldRow label="Guardian #1 Name">
+                <input
+                  className="input"
+                  value={editForm.guardian_1_name}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, guardian_1_name: e.target.value })
+                  }
+                />
+              </FormFieldRow>
+              <FormFieldRow label="Guardian #1 Phone">
+                <input
+                  className="input"
+                  value={editForm.guardian_1_phone}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, guardian_1_phone: e.target.value })
+                  }
+                />
+              </FormFieldRow>
+              <FormFieldRow label="Guardian #1 Email">
+                <input
+                  className="input"
+                  value={editForm.guardian_1_email}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, guardian_1_email: e.target.value })
+                  }
+                />
+              </FormFieldRow>
+              <FormFieldRow label="Guardian #2 Name">
+                <input
+                  className="input"
+                  value={editForm.guardian_2_name}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, guardian_2_name: e.target.value })
+                  }
+                />
+              </FormFieldRow>
+              <FormFieldRow label="Guardian #2 Phone">
+                <input
+                  className="input"
+                  value={editForm.guardian_2_phone}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, guardian_2_phone: e.target.value })
+                  }
+                />
+              </FormFieldRow>
+              <FormFieldRow label="Guardian #2 Email">
+                <input
+                  className="input"
+                  value={editForm.guardian_2_email}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, guardian_2_email: e.target.value })
                   }
                 />
               </FormFieldRow>
@@ -3218,10 +3453,22 @@ export default function App() {
                 <strong>App:</strong> San Diego Soldiers Management Tool
               </div>
               <div className="detail-line">
-                <strong>Version:</strong> {APP_VERSION}
+                <strong>Current Version:</strong> {APP_VERSION}
               </div>
               <div className="detail-line">
                 <strong>Developer:</strong> Robret J. Rush, Jr.
+              </div>
+              <div className="version-history">
+                <div className="version-history-title">Version History</div>
+                {VERSION_HISTORY.map((release) => (
+                  <div key={release.version} className="version-history-card">
+                    <div className="version-history-header">
+                      <strong>{release.version}</strong>
+                      <span>{release.date}</span>
+                    </div>
+                    <div className="version-history-notes">{release.notes}</div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
