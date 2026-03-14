@@ -158,53 +158,8 @@ textarea {
   margin-bottom: 24px;
 }
 
-.mobile-context-card,
 .mobile-bottom-nav {
   display: none;
-}
-
-.mobile-context-card {
-  margin-bottom: 20px;
-  padding: 16px 18px;
-  border-radius: 20px;
-  border: 1px solid rgba(148, 163, 184, 0.16);
-  background: linear-gradient(
-    180deg,
-    rgba(8, 23, 53, 0.92) 0%,
-    rgba(7, 18, 43, 0.95) 100%
-  );
-  box-shadow:
-    0 14px 34px rgba(0, 0, 0, 0.22),
-    inset 0 1px 0 rgba(255, 255, 255, 0.03);
-  gap: 14px;
-}
-
-.mobile-context-kicker {
-  font-size: 11px;
-  font-weight: 900;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: #93c5fd;
-}
-
-.mobile-context-title {
-  margin-top: 4px;
-  font-size: 24px;
-  font-weight: 900;
-  color: #f8fafc;
-  letter-spacing: -0.03em;
-}
-
-.mobile-context-detail {
-  margin-top: 4px;
-  color: #dbeafe;
-  font-size: 14px;
-}
-
-.mobile-context-actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
 }
 
 .mobile-bottom-nav {
@@ -219,7 +174,7 @@ textarea {
   background: rgba(6, 14, 34, 0.92);
   backdrop-filter: blur(18px);
   box-shadow: 0 18px 46px rgba(0, 0, 0, 0.35);
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -542,6 +497,11 @@ textarea {
   justify-content: center;
 }
 
+.roster-management-shell {
+  display: grid;
+  gap: 18px;
+}
+
 .roster-management-page {
   display: grid;
   grid-template-columns: 360px 1fr;
@@ -552,6 +512,11 @@ textarea {
 .roster-management-pool {
   position: sticky;
   top: 24px;
+}
+
+.roster-template-tools-card {
+  display: grid;
+  gap: 16px;
 }
 
 .roster-focus-card {
@@ -579,6 +544,13 @@ textarea {
 .roster-card-actions {
   display: flex;
   gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.roster-team-move-row {
+  display: flex;
+  gap: 10px;
   flex-wrap: wrap;
   align-items: center;
 }
@@ -1580,7 +1552,7 @@ textarea {
 
 @media (max-width: 700px) {
   .app-shell {
-    padding: 16px 16px calc(112px + env(safe-area-inset-bottom, 0px));
+    padding: 16px 16px calc(148px + env(safe-area-inset-bottom, 0px));
   }
 
   .brand {
@@ -1711,14 +1683,13 @@ textarea {
 
   .mobile-menu-sheet.open {
     display: block;
-  }
-
-  .mobile-context-card {
-    display: grid;
+    max-height: min(70vh, 560px);
+    overflow-y: auto;
   }
 
   .mobile-bottom-nav {
     display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .summary-row {
@@ -1740,7 +1711,7 @@ textarea {
   }
 
   .app-shell {
-    padding: 12px 12px calc(112px + env(safe-area-inset-bottom, 0px));
+    padding: 12px 12px calc(148px + env(safe-area-inset-bottom, 0px));
   }
 
   .app-shell::before {
@@ -1787,21 +1758,6 @@ textarea {
   .mobile-menu-title {
     font-size: 20px;
     overflow-wrap: anywhere;
-  }
-
-  .mobile-context-card {
-    padding: 14px;
-    margin-bottom: 16px;
-    border-radius: 16px;
-  }
-
-  .mobile-context-title {
-    font-size: 20px;
-  }
-
-  .mobile-context-actions {
-    display: grid;
-    grid-template-columns: 1fr;
   }
 
   .brand-subtitle {
@@ -1948,6 +1904,7 @@ textarea {
   .rosters-toolbar-actions > *,
   .roster-focus-actions > *,
   .roster-card-actions > *,
+  .roster-team-move-row > *,
   .document-library-actions > * {
     width: 100%;
   }
@@ -1959,6 +1916,7 @@ textarea {
   .rosters-toolbar-actions,
   .roster-focus-actions,
   .roster-card-actions,
+  .roster-team-move-row,
   .document-library-actions {
     gap: 10px;
   }
