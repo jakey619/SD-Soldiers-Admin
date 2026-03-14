@@ -778,6 +778,38 @@ function SummaryListCard({
   );
 }
 
+function PlayerDetailItem({
+  label,
+  value,
+}: {
+  label: string;
+  value: ReactNode;
+}) {
+  return (
+    <div className="player-detail-item">
+      <div className="player-detail-label">{label}</div>
+      <div className="player-detail-value">{value}</div>
+    </div>
+  );
+}
+
+function mobileTabLabel(tab: MainTab) {
+  switch (tab) {
+    case "players":
+      return "Players";
+    case "attendance":
+      return "Evaluations";
+    case "door":
+      return "Tryouts";
+    case "roster-management":
+      return "Rosters";
+    case "documents":
+      return "Documents";
+    default:
+      return "Dashboard";
+  }
+}
+
 export default function App() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [latestEvaluations, setLatestEvaluations] = useState<LatestEvaluation[]>([]);
@@ -791,6 +823,9 @@ export default function App() {
   const [rosterAddPlayerId, setRosterAddPlayerId] = useState("");
   const [draggedPlayerId, setDraggedPlayerId] = useState<string | null>(null);
   const [rosterManagementSearch, setRosterManagementSearch] = useState("");
+  const [mobileRosterTargets, setMobileRosterTargets] = useState<
+    Record<string, TeamOption>
+  >({});
   const [rosterTemplateName, setRosterTemplateName] = useState("");
   const [rosterImportFile, setRosterImportFile] = useState<File | null>(null);
   const [managementDocuments, setManagementDocuments] = useState<ManagementDocument[]>([]);
@@ -1022,6 +1057,13 @@ export default function App() {
   }, [latestEvaluations]);
 
   const notCheckedInCount = players.length - checkedInCount;
+  const mobileTabItems: { key: MainTab; shortLabel: string }[] = [
+    { key: "players", shortLabel: "Players" },
+    { key: "attendance", shortLabel: "Evals" },
+    { key: "door", shortLabel: "Tryouts" },
+    { key: "roster-management", shortLabel: "Rosters" },
+    { key: "documents", shortLabel: "Docs" },
+  ];
 
   const gradeCounts = useMemo(() => {
     return gradeOptions.map((grade) => ({
@@ -1033,6 +1075,7 @@ export default function App() {
   function goToTab(nextTab: MainTab) {
     setTab(nextTab === "rosters" ? "roster-management" : nextTab);
     setIsMobileMenuOpen(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   const teamStats = useMemo<TeamStats[]>(() => {
@@ -1047,6 +1090,43 @@ export default function App() {
       };
     });
   }, [players]);
+
+  const mobileSectionTitle = useMemo(() => mobileTabLabel(tab), [tab]);
+
+  const mobileSectionDetail = useMemo(() => {
+    if (tab === "players") {
+      return `${filteredPlayers.length} players in view`;
+    }
+
+    if (tab === "attendance") {
+      return selectedPlayer
+        ? `${selectedPlayer.first_name ?? ""} ${selectedPlayer.last_name ?? ""}`.trim()
+        : "Choose a player to review";
+    }
+
+    if (tab === "door") {
+      return `${doorPlayers.length} tryout players ready`;
+    }
+
+    if (tab === "roster-management") {
+      return `${activeRosterTeam} roster • ${activeRosterPlayers.length} players`;
+    }
+
+    if (tab === "documents") {
+      return `${managementDocuments.length} team documents`;
+    }
+
+    return `${players.length} total players`;
+  }, [
+    tab,
+    filteredPlayers.length,
+    selectedPlayer,
+    doorPlayers.length,
+    activeRosterTeam,
+    activeRosterPlayers.length,
+    managementDocuments.length,
+    players.length,
+  ]);
 
   function exportAllPlayersCsv() {
     const rows: string[][] = [
@@ -1574,6 +1654,21 @@ export default function App() {
     await updateSuggestedTeam(player, team);
   }
 
+  function getMobileRosterTarget(player: Player) {
+    return mobileRosterTargets[player.id] ?? (player.suggested_team ?? "Undecided");
+  }
+
+  async function movePlayerFromMobile(player: Player) {
+    const targetTeam = getMobileRosterTarget(player);
+
+    if ((player.suggested_team ?? "Undecided") === targetTeam) {
+      setStatus(`${player.first_name} ${player.last_name} is already on ${targetTeam}.`);
+      return;
+    }
+
+    await updateSuggestedTeam(player, targetTeam);
+  }
+
   function downloadRosterImportTemplate() {
     const templateName = rosterTemplateName.trim();
     const rows: string[][] = [
@@ -1950,6 +2045,50 @@ export default function App() {
           </div>
         </div>
         <div className="mobile-menu-footer">Version {APP_VERSION}</div>
+      </div>
+
+      <div className="mobile-context-card">
+        <div className="mobile-context-copy">
+          <div className="mobile-context-kicker">Current Section</div>
+          <div className="mobile-context-title">{mobileSectionTitle}</div>
+          <div className="mobile-context-detail">{mobileSectionDetail}</div>
+        </div>
+        <div className="mobile-context-actions">
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() =>
+              openRegistrationModal(tab === "roster-management" ? activeRosterTeam : undefined)
+            }
+          >
+            New Player
+          </button>
+          {tab === "attendance" && selectedPlayer ? (
+            <button
+              type="button"
+              className="primary-button"
+              onClick={() => openEvaluationModal(selectedPlayer)}
+            >
+              Evaluate
+            </button>
+          ) : tab === "players" && selectedPlayer ? (
+            <button
+              type="button"
+              className="primary-button"
+              onClick={() => setViewingPlayerId(selectedPlayer.id)}
+            >
+              Open Player
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="primary-button"
+              onClick={() => setIsAboutOpen(true)}
+            >
+              About
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="summary-row">
@@ -2697,6 +2836,31 @@ export default function App() {
                         <div className="roster-management-meta">
                           {player.grade_group ?? "-"} | {player.grade ?? "-"} | #{player.jersey_number || "-"}
                         </div>
+                        <div className="mobile-roster-assignment">
+                          <select
+                            className="select mobile-roster-select"
+                            value={getMobileRosterTarget(player)}
+                            onChange={(e) =>
+                              setMobileRosterTargets((prev) => ({
+                                ...prev,
+                                [player.id]: e.target.value as TeamOption,
+                              }))
+                            }
+                          >
+                            {TEAM_OPTIONS.map((team) => (
+                              <option key={team} value={team}>
+                                {team}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            className="secondary-button mobile-roster-move"
+                            onClick={() => movePlayerFromMobile(player)}
+                          >
+                            Move
+                          </button>
+                        </div>
                       </div>
                     ))}
                   {rosterManagementFilteredPlayers.filter(
@@ -2724,6 +2888,31 @@ export default function App() {
                       </div>
                       <div className="roster-management-meta">
                         {player.suggested_team ?? "Undecided"} | Grade {player.grade ?? "-"} | #{player.jersey_number || "-"}
+                      </div>
+                      <div className="mobile-roster-assignment">
+                        <select
+                          className="select mobile-roster-select"
+                          value={getMobileRosterTarget(player)}
+                          onChange={(e) =>
+                            setMobileRosterTargets((prev) => ({
+                              ...prev,
+                              [player.id]: e.target.value as TeamOption,
+                            }))
+                          }
+                        >
+                          {TEAM_OPTIONS.map((team) => (
+                            <option key={team} value={team}>
+                              {team}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          className="secondary-button mobile-roster-move"
+                          onClick={() => movePlayerFromMobile(player)}
+                        >
+                          Move
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -2766,6 +2955,31 @@ export default function App() {
                         </div>
                         <div className="roster-management-meta">
                           Grade {player.grade ?? "-"} | #{player.jersey_number || "-"} | {player.school ?? "-"}
+                        </div>
+                        <div className="mobile-roster-assignment">
+                          <select
+                            className="select mobile-roster-select"
+                            value={getMobileRosterTarget(player)}
+                            onChange={(e) =>
+                              setMobileRosterTargets((prev) => ({
+                                ...prev,
+                                [player.id]: e.target.value as TeamOption,
+                              }))
+                            }
+                          >
+                            {TEAM_OPTIONS.map((optionTeam) => (
+                              <option key={optionTeam} value={optionTeam}>
+                                {optionTeam}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            className="secondary-button mobile-roster-move"
+                            onClick={() => movePlayerFromMobile(player)}
+                          >
+                            Move
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -3064,7 +3278,7 @@ export default function App() {
             </div>
 
             <div className="player-details-modal">
-              <div className="selected-player-top">
+              <div className="selected-player-top player-details-hero">
                 <PlayerPhoto
                   src={viewingPlayer.photo_url}
                   alt={`${viewingPlayer.first_name ?? ""} ${viewingPlayer.last_name ?? ""}`}
@@ -3083,67 +3297,111 @@ export default function App() {
                     {formatBirthDate(viewingPlayer.birth_date)} | Age{" "}
                     {calculateAge(viewingPlayer.birth_date) ?? "-"}
                   </div>
+                  <div className="badge-row">
+                    <span
+                      className={`badge ${
+                        viewingPlayer.checked_in ? "badge-good" : "badge-neutral"
+                      }`}
+                    >
+                      {viewingPlayer.checked_in ? "Checked In" : "Not Checked In"}
+                    </span>
+                    <span className="badge badge-team">
+                      {viewingPlayer.suggested_team ?? "Undecided"}
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              <div className="selected-player-details">
-                <div className="detail-line">
-                  <strong>Player Cell:</strong>{" "}
-                  <ContactLink type="phone" value={viewingPlayer.player_phone} />
+              <div className="player-quick-actions">
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={() => {
+                    setViewingPlayerId(null);
+                    setSelectedPlayerId(viewingPlayer.id);
+                    setTab("attendance");
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  }}
+                >
+                  Open Full Profile
+                </button>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => {
+                    setViewingPlayerId(null);
+                    openEditModal(viewingPlayer);
+                  }}
+                >
+                  Edit Player
+                </button>
+              </div>
+
+              <div className="player-detail-section">
+                <div className="player-detail-section-title">Player Contact</div>
+                <div className="player-detail-grid">
+                  <PlayerDetailItem
+                    label="Player Cell"
+                    value={<ContactLink type="phone" value={viewingPlayer.player_phone} />}
+                  />
+                  <PlayerDetailItem
+                    label="Player Email"
+                    value={<ContactLink type="email" value={viewingPlayer.player_email} />}
+                  />
+                  <PlayerDetailItem
+                    label="Uniform Size"
+                    value={viewingPlayer.uniform_size || "-"}
+                  />
+                  <PlayerDetailItem
+                    label="School"
+                    value={viewingPlayer.school || "-"}
+                  />
                 </div>
-                <div className="detail-line">
-                  <strong>Player Email:</strong>{" "}
-                  <ContactLink type="email" value={viewingPlayer.player_email} />
+              </div>
+
+              <div className="player-detail-section">
+                <div className="player-detail-section-title">Guardian Contacts</div>
+                <div className="player-detail-grid">
+                  <PlayerDetailItem
+                    label="Guardian #1"
+                    value={viewingPlayer.guardian_1_name || "-"}
+                  />
+                  <PlayerDetailItem
+                    label="Guardian #1 Phone"
+                    value={<ContactLink type="phone" value={getGuardian1Phone(viewingPlayer)} />}
+                  />
+                  <PlayerDetailItem
+                    label="Guardian #1 Email"
+                    value={<ContactLink type="email" value={getGuardian1Email(viewingPlayer)} />}
+                  />
+                  <PlayerDetailItem
+                    label="Guardian #2"
+                    value={viewingPlayer.guardian_2_name || "-"}
+                  />
+                  <PlayerDetailItem
+                    label="Guardian #2 Phone"
+                    value={<ContactLink type="phone" value={viewingPlayer.guardian_2_phone ?? null} />}
+                  />
+                  <PlayerDetailItem
+                    label="Guardian #2 Email"
+                    value={<ContactLink type="email" value={viewingPlayer.guardian_2_email ?? null} />}
+                  />
                 </div>
-                <div className="detail-line">
-                  <strong>Uniform Size:</strong> {viewingPlayer.uniform_size || "-"}
+              </div>
+
+              <div className="player-detail-section">
+                <div className="player-detail-section-title">Documents And Notes</div>
+                <div className="document-status-row">
+                  <DocumentStatus
+                    label="Birth Certificate"
+                    url={viewingPlayer.birth_certificate_url}
+                  />
+                  <DocumentStatus
+                    label="Report Card"
+                    url={viewingPlayer.report_card_url}
+                  />
                 </div>
-                <div className="detail-line">
-                  <strong>Guardian #1:</strong> {viewingPlayer.guardian_1_name || "-"}
-                </div>
-                <div className="detail-line">
-                  <strong>Guardian #1 Phone:</strong>{" "}
-                  <ContactLink type="phone" value={getGuardian1Phone(viewingPlayer)} />
-                </div>
-                <div className="detail-line">
-                  <strong>Guardian #1 Email:</strong>{" "}
-                  <ContactLink type="email" value={getGuardian1Email(viewingPlayer)} />
-                </div>
-                <div className="detail-line">
-                  <strong>Guardian #2:</strong> {viewingPlayer.guardian_2_name || "-"}
-                </div>
-                <div className="detail-line">
-                  <strong>Guardian #2 Phone:</strong>{" "}
-                  <ContactLink type="phone" value={viewingPlayer.guardian_2_phone ?? null} />
-                </div>
-                <div className="detail-line">
-                  <strong>Guardian #2 Email:</strong>{" "}
-                  <ContactLink type="email" value={viewingPlayer.guardian_2_email ?? null} />
-                </div>
-                <div className="detail-line">
-                  <strong>Team:</strong> {viewingPlayer.suggested_team ?? "Undecided"}
-                </div>
-                <div className="detail-line">
-                  <strong>Birth Certificate:</strong>
-                  <span className="detail-inline-status">
-                    <DocumentStatus
-                      label="On File"
-                      url={viewingPlayer.birth_certificate_url}
-                    />
-                  </span>
-                </div>
-                <div className="detail-line">
-                  <strong>Report Card:</strong>
-                  <span className="detail-inline-status">
-                    <DocumentStatus
-                      label="On File"
-                      url={viewingPlayer.report_card_url}
-                    />
-                  </span>
-                </div>
-                <div className="detail-line">
-                  <strong>Notes:</strong> {viewingPlayer.notes || "-"}
-                </div>
+                <PlayerDetailItem label="Notes" value={viewingPlayer.notes || "-"} />
               </div>
 
               <button
@@ -3752,6 +4010,19 @@ export default function App() {
           </div>
         </div>
       )}
+
+      <nav className="mobile-bottom-nav" aria-label="Mobile navigation">
+        {mobileTabItems.map((item) => (
+          <button
+            key={item.key}
+            type="button"
+            className={`mobile-bottom-nav-button ${tab === item.key ? "active" : ""}`}
+            onClick={() => goToTab(item.key)}
+          >
+            <span className="mobile-bottom-nav-label">{item.shortLabel}</span>
+          </button>
+        ))}
+      </nav>
     </div>
   );
 }
