@@ -1696,6 +1696,11 @@ textarea {
     display: none;
   }
 
+  .rosters-page .team-stats-grid,
+  .rosters-page .roster-grid {
+    display: none;
+  }
+
   .roster-modal-row {
     grid-template-columns: 1fr;
   }

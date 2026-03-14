@@ -192,6 +192,17 @@ const MANAGEMENT_DOCUMENT_CATEGORIES: {
   { value: "other", label: "Other" },
 ];
 
+const OPTIONAL_PLAYER_COLUMNS = new Set([
+  "player_email",
+  "uniform_size",
+  "guardian_1_name",
+  "guardian_1_phone",
+  "guardian_1_email",
+  "guardian_2_name",
+  "guardian_2_phone",
+  "guardian_2_email",
+]);
+
 function groupFromGrade(grade: string) {
   const n = parseInt(grade, 10);
   if (!Number.isFinite(n)) return "High School";
@@ -260,6 +271,35 @@ function isProgramTeam(team: TeamOption | null | undefined) {
 function sanitizePhoneNumber(phone: string | null) {
   if (!phone) return "";
   return phone.replace(/[^\d+]/g, "");
+}
+
+function getMissingColumnFromError(message: string | undefined) {
+  if (!message) return null;
+  const match = message.match(/Could not find the '([^']+)' column/);
+  return match?.[1] ?? null;
+}
+
+function stripUnsupportedPlayerColumn(
+  payload: Record<string, unknown>,
+  column: string | null
+) {
+  if (!column || !OPTIONAL_PLAYER_COLUMNS.has(column) || !(column in payload)) {
+    return null;
+  }
+
+  const nextPayload = { ...payload };
+  delete nextPayload[column];
+
+  // Keep parent fields aligned with guardian #1 only when that field still exists.
+  if (column === "guardian_1_phone") {
+    nextPayload.parent_phone = null;
+  }
+
+  if (column === "guardian_1_email") {
+    nextPayload.parent_email = null;
+  }
+
+  return nextPayload;
 }
 
 function sanitizeFilenamePart(value: string) {
@@ -1426,6 +1466,59 @@ export default function App() {
     return { payload, errors };
   }
 
+  async function insertPlayerRecord(payload: Record<string, unknown>) {
+    let nextPayload = { ...payload };
+    const skippedColumns: string[] = [];
+
+    while (true) {
+      const result = await supabase
+        .from("players")
+        .insert([nextPayload])
+        .select()
+        .single();
+
+      if (!result.error || !result.error.message) {
+        return { ...result, skippedColumns };
+      }
+
+      const missingColumn = getMissingColumnFromError(result.error.message);
+      const sanitizedPayload = stripUnsupportedPlayerColumn(nextPayload, missingColumn);
+
+      if (!sanitizedPayload) {
+        return { ...result, skippedColumns };
+      }
+
+      skippedColumns.push(missingColumn as string);
+      nextPayload = sanitizedPayload;
+    }
+  }
+
+  async function updatePlayerRecord(id: string, payload: Record<string, unknown>) {
+    let nextPayload = { ...payload };
+    const skippedColumns: string[] = [];
+
+    while (true) {
+      const result = await supabase
+        .from("players")
+        .update(nextPayload)
+        .eq("id", id);
+
+      if (!result.error || !result.error.message) {
+        return { ...result, skippedColumns, payload: nextPayload };
+      }
+
+      const missingColumn = getMissingColumnFromError(result.error.message);
+      const sanitizedPayload = stripUnsupportedPlayerColumn(nextPayload, missingColumn);
+
+      if (!sanitizedPayload) {
+        return { ...result, skippedColumns, payload: nextPayload };
+      }
+
+      skippedColumns.push(missingColumn as string);
+      nextPayload = sanitizedPayload;
+    }
+  }
+
   async function addPlayer(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
@@ -1434,35 +1527,31 @@ export default function App() {
       return;
     }
 
-    const { data, error } = await supabase
-      .from("players")
-      .insert([
-        {
-          first_name: form.first_name.trim(),
-          last_name: form.last_name.trim(),
-          grade: form.grade.trim(),
-          grade_group: groupFromGrade(form.grade.trim()),
-          school: form.school || null,
-          birth_date: form.birth_date || null,
-          jersey_number: form.jersey_number || null,
-          player_phone: form.player_phone || null,
-          player_email: form.player_email || null,
-          uniform_size: form.uniform_size || null,
-          guardian_1_name: form.guardian_1_name || null,
-          guardian_1_phone: form.guardian_1_phone || null,
-          guardian_1_email: form.guardian_1_email || null,
-          guardian_2_name: form.guardian_2_name || null,
-          guardian_2_phone: form.guardian_2_phone || null,
-          guardian_2_email: form.guardian_2_email || null,
-          parent_phone: form.guardian_1_phone || null,
-          parent_email: form.guardian_1_email || null,
-          checked_in: true,
-          suggested_team: form.suggested_team,
-          notes: "Onsite registration",
-        },
-      ])
-      .select()
-      .single();
+    const insertPayload = {
+      first_name: form.first_name.trim(),
+      last_name: form.last_name.trim(),
+      grade: form.grade.trim(),
+      grade_group: groupFromGrade(form.grade.trim()),
+      school: form.school || null,
+      birth_date: form.birth_date || null,
+      jersey_number: form.jersey_number || null,
+      player_phone: form.player_phone || null,
+      player_email: form.player_email || null,
+      uniform_size: form.uniform_size || null,
+      guardian_1_name: form.guardian_1_name || null,
+      guardian_1_phone: form.guardian_1_phone || null,
+      guardian_1_email: form.guardian_1_email || null,
+      guardian_2_name: form.guardian_2_name || null,
+      guardian_2_phone: form.guardian_2_phone || null,
+      guardian_2_email: form.guardian_2_email || null,
+      parent_phone: form.guardian_1_phone || null,
+      parent_email: form.guardian_1_email || null,
+      checked_in: true,
+      suggested_team: form.suggested_team,
+      notes: "Onsite registration",
+    };
+
+    const { data, error, skippedColumns } = await insertPlayerRecord(insertPayload);
 
     if (error || !data) {
       setStatus(`Insert error: ${error?.message ?? "Unable to create player."}`);
@@ -1502,8 +1591,12 @@ export default function App() {
       assetErrors.length > 0
         ? `Player registered. Upload issues: ${assetErrors.join(" ")}`
         : isProgramTeam(form.suggested_team)
-          ? "Player registered successfully."
-          : "Player saved to the player pool. Assign a team to include them in Total Players."
+          ? skippedColumns.length > 0
+            ? `Player registered successfully. Missing database columns were skipped: ${skippedColumns.join(", ")}.`
+            : "Player registered successfully."
+          : skippedColumns.length > 0
+            ? `Player saved to the player pool. Missing database columns were skipped: ${skippedColumns.join(", ")}. Assign a team to include them in Total Players.`
+            : "Player saved to the player pool. Assign a team to include them in Total Players."
     );
   }
 
@@ -1555,10 +1648,11 @@ export default function App() {
       report_card_url: assetPayload.report_card_url ?? null,
     };
 
-    const { error } = await supabase
-      .from("players")
-      .update(fullPayload)
-      .eq("id", editingPlayerId);
+    const {
+      error,
+      skippedColumns,
+      payload: savedPayload,
+    } = await updatePlayerRecord(editingPlayerId, fullPayload);
 
     if (error) {
       setStatus(`Edit error: ${error.message}`);
@@ -1566,7 +1660,7 @@ export default function App() {
     }
 
     setPlayers((prev) =>
-      prev.map((p) => (p.id === editingPlayerId ? { ...p, ...fullPayload } : p))
+      prev.map((p) => (p.id === editingPlayerId ? { ...p, ...savedPayload } : p))
     );
 
     setIsEditOpen(false);
@@ -1577,7 +1671,9 @@ export default function App() {
     setStatus(
       assetErrors.length > 0
         ? `Player updated with upload issues: ${assetErrors.join(" ")}`
-        : "Player info updated."
+        : skippedColumns.length > 0
+          ? `Player info updated. Missing database columns were skipped: ${skippedColumns.join(", ")}.`
+          : "Player info updated."
     );
   }
 
@@ -1797,10 +1893,7 @@ export default function App() {
       };
 
       if (existingPlayer) {
-        const { error } = await supabase
-          .from("players")
-          .update(payload)
-          .eq("id", existingPlayer.id);
+        const { error } = await updatePlayerRecord(existingPlayer.id, payload);
 
         if (error) {
           setStatus(`Roster upload error: ${error.message}`);
@@ -1809,12 +1902,10 @@ export default function App() {
 
         updatedCount += 1;
       } else {
-        const { error } = await supabase.from("players").insert([
-          {
-            ...payload,
-            checked_in: false,
-          },
-        ]);
+        const { error } = await insertPlayerRecord({
+          ...payload,
+          checked_in: false,
+        });
 
         if (error) {
           setStatus(`Roster upload error: ${error.message}`);
