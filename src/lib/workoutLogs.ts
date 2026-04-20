@@ -25,8 +25,10 @@ export type WorkoutActivityKey =
   | "cardio"
   | "shoots";
 
+export type ActivityLevel = "" | "Beginner" | "Intermediate" | "Advanced";
 export type ActivityChecks = Record<WorkoutActivityKey, boolean>;
 export type ActivityNotes = Record<WorkoutActivityKey, string>;
+export type ActivityLevels = Record<WorkoutActivityKey, ActivityLevel>;
 
 export type WorkoutLog = {
   id: string;
@@ -35,6 +37,7 @@ export type WorkoutLog = {
   workout_date: string;
   activities: ActivityChecks;
   activity_notes: ActivityNotes;
+  activity_levels: ActivityLevels;
   notes: string | null;
   focus_area: string | null;
   effort_level: number | null;
@@ -82,6 +85,32 @@ function normalizeActivityNotes(value: unknown): ActivityNotes {
   };
 }
 
+function normalizeActivityLevels(value: unknown): ActivityLevels {
+  const source = typeof value === "object" && value ? value : {};
+  const normalizeLevel = (entry: unknown): ActivityLevel => {
+    if (
+      entry === "Beginner" ||
+      entry === "Intermediate" ||
+      entry === "Advanced"
+    ) {
+      return entry;
+    }
+
+    return "";
+  };
+
+  return {
+    pushups: normalizeLevel((source as Partial<ActivityLevels>).pushups),
+    sitUps: normalizeLevel((source as Partial<ActivityLevels>).sitUps),
+    squats: normalizeLevel((source as Partial<ActivityLevels>).squats),
+    lunges: normalizeLevel((source as Partial<ActivityLevels>).lunges),
+    dribbles: normalizeLevel((source as Partial<ActivityLevels>).dribbles),
+    jumpRopes: normalizeLevel((source as Partial<ActivityLevels>).jumpRopes),
+    cardio: normalizeLevel((source as Partial<ActivityLevels>).cardio),
+    shoots: normalizeLevel((source as Partial<ActivityLevels>).shoots),
+  };
+}
+
 function normalizeLog(log: Partial<WorkoutLog> & Pick<WorkoutLog, "id">): WorkoutLog {
   return {
     id: log.id,
@@ -90,6 +119,7 @@ function normalizeLog(log: Partial<WorkoutLog> & Pick<WorkoutLog, "id">): Workou
     workout_date: String(log.workout_date ?? ""),
     activities: normalizeActivityChecks(log.activities),
     activity_notes: normalizeActivityNotes(log.activity_notes),
+    activity_levels: normalizeActivityLevels(log.activity_levels),
     notes: log.notes ?? null,
     focus_area: log.focus_area ?? null,
     effort_level: log.effort_level ?? null,
@@ -176,6 +206,7 @@ export async function saveWorkoutLog(
     workout_date: input.workout_date,
     activities: normalizeActivityChecks(input.activities),
     activity_notes: normalizeActivityNotes(input.activity_notes),
+    activity_levels: normalizeActivityLevels(input.activity_levels),
     notes: input.notes?.trim() || null,
     focus_area: input.focus_area?.trim() || null,
     effort_level: input.effort_level ?? null,

@@ -53,6 +53,13 @@ textarea {
   filter: grayscale(0.1);
 }
 
+.app-shell-auth::before {
+  background:
+    radial-gradient(circle at center, rgba(255, 255, 255, 0.04) 0%, transparent 56%),
+    url("./assets/soldiers-logo.png") center 54% / min(62vw, 720px) no-repeat;
+  opacity: 0.16;
+}
+
 .top-bar {
   display: flex;
   justify-content: space-between;
@@ -2615,6 +2622,74 @@ textarea {
   gap: 10px;
 }
 
+.activity-standards-card,
+.activity-level-grid {
+  display: grid;
+}
+
+.activity-standards-card {
+  gap: 10px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.activity-standards-title {
+  color: #f8fafc;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.activity-level-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.activity-level-chip {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(96, 165, 250, 0.22);
+  background: rgba(30, 41, 59, 0.72);
+  color: #e2e8f0;
+  cursor: pointer;
+}
+
+.activity-level-chip strong {
+  color: #f8fafc;
+  font-size: 13px;
+}
+
+.activity-level-chip span {
+  color: #cbd5e1;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.activity-level-chip.selected {
+  border-color: rgba(34, 197, 94, 0.34);
+  background: rgba(20, 83, 45, 0.28);
+}
+
+.activity-coaching-tip {
+  color: #bfdbfe;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.activity-clear-level {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #93c5fd;
+  font-weight: 700;
+  cursor: pointer;
+  justify-self: start;
+}
+
 .activity-mandatory-pill {
   display: inline-flex;
   align-items: center;
@@ -2921,7 +2996,6 @@ textarea {
 }
 
 .auth-hero-media,
-.auth-hero-overlay,
 .auth-hero-stats {
   display: grid;
 }
@@ -2929,7 +3003,7 @@ textarea {
 .auth-hero-media {
   position: relative;
   overflow: hidden;
-  min-height: 300px;
+  min-height: 170px;
   border-radius: 22px;
   border: 1px solid rgba(148, 163, 184, 0.14);
   background: rgba(8, 23, 53, 0.72);
@@ -2941,53 +3015,11 @@ textarea {
 .auth-hero-image {
   width: 100%;
   height: 100%;
-  min-height: 300px;
+  min-height: 170px;
   object-fit: cover;
   object-position: center;
   display: block;
-  filter: saturate(1.05) contrast(1.02);
-}
-
-.auth-hero-overlay {
-  position: absolute;
-  inset: 0;
-  align-content: end;
-  gap: 12px;
-  padding: 24px;
-  background:
-    linear-gradient(180deg, rgba(2, 6, 23, 0.08) 0%, rgba(2, 6, 23, 0.72) 58%, rgba(2, 6, 23, 0.96) 100%);
-}
-
-.auth-hero-title {
-  margin-bottom: 0;
-  max-width: 18ch;
-}
-
-.auth-hero-stats {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.auth-hero-stat {
-  padding: 12px 14px;
-  border-radius: 16px;
-  border: 1px solid rgba(148, 163, 184, 0.16);
-  background: rgba(15, 23, 42, 0.58);
-}
-
-.auth-hero-stat span {
-  display: block;
-  margin-bottom: 4px;
-  color: #93c5fd;
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.auth-hero-stat strong {
-  color: #f8fafc;
-  font-size: 16px;
+  filter: saturate(1.05) contrast(1.02) brightness(0.92);
 }
 
 .auth-hero-copy,
@@ -3282,6 +3314,10 @@ textarea {
     padding-left: 30px;
   }
 
+  .activity-level-grid {
+    grid-template-columns: 1fr;
+  }
+
   .admin-date-filter {
     max-width: none;
   }
@@ -3328,7 +3364,4 @@ textarea {
     flex-direction: column;
   }
 
-  .auth-hero-stats {
-    grid-template-columns: 1fr;
-  }
 }

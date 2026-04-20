@@ -5,6 +5,8 @@ import soldiersSplash from "./assets/soldiers-logo.jpg";
 import "./app.css";
 import { supabase } from "./lib/supabase";
 import {
+  type ActivityLevel,
+  type ActivityLevels,
   fetchWorkoutLogs,
   saveWorkoutLog,
   type ActivityChecks,
@@ -45,12 +47,15 @@ type WorkoutForm = {
   advancedNotes: string;
   activities: ActivityChecks;
   activityNotes: ActivityNotes;
+  activityLevels: ActivityLevels;
 };
 
 type WorkoutActivityDefinition = {
   key: WorkoutActivityKey;
   label: string;
   description: string;
+  standards: Record<Exclude<ActivityLevel, "">, string>;
+  coachingTip?: string;
 };
 
 type AthletePlayerOption = {
@@ -82,42 +87,84 @@ const WORKOUT_ACTIVITIES: WorkoutActivityDefinition[] = [
     key: "pushups",
     label: "Pushups",
     description: "Upper-body strength work. Use this when you completed pushup sets.",
+    standards: {
+      Beginner: "10-15 reps x 2 sets",
+      Intermediate: "15-20 reps x 3 sets",
+      Advanced: "25-30 reps x 4 sets",
+    },
   },
   {
     key: "sitUps",
     label: "Sit-ups",
     description: "Core training focused on trunk control and abdominal endurance.",
+    standards: {
+      Beginner: "15-20 reps x 2 sets",
+      Intermediate: "25-30 reps x 3 sets",
+      Advanced: "40-50 reps x 4 sets",
+    },
   },
   {
     key: "dribbles",
     label: "Dribbles",
     description:
       "Ball-handling reps like pound dribbles, crossovers, combo work, or weak-hand drills.",
+    standards: {
+      Beginner: "3-5 mins each hand",
+      Intermediate: "5-7 mins each hand",
+      Advanced: "8-10 mins each hand",
+    },
+    coachingTip:
+      "Go in minute intervals. Count your dribbles, then beat the previous count on the next minute.",
   },
   {
     key: "squats",
     label: "Squats",
     description: "Lower-body strength and explosion work with bodyweight or added resistance.",
+    standards: {
+      Beginner: "15-20 reps x 2 sets",
+      Intermediate: "30 reps x 3 sets",
+      Advanced: "40-50 reps x 4 sets",
+    },
   },
   {
     key: "lunges",
     label: "Lunges",
     description: "Single-leg movement work for balance, strength, and mobility.",
+    standards: {
+      Beginner: "10 per leg x 2 sets",
+      Intermediate: "12-15 per leg x 3 sets",
+      Advanced: "20 per leg x 3-4 sets",
+    },
   },
   {
     key: "jumpRopes",
     label: "Jump Ropes",
     description: "Rhythm, conditioning, and footwork training using jump rope rounds.",
+    standards: {
+      Beginner: "3 mins",
+      Intermediate: "5 mins",
+      Advanced: "8-10 mins",
+    },
   },
   {
     key: "cardio",
     label: "Cardio",
     description: "Conditioning work such as running, biking, intervals, or stamina circuits.",
+    standards: {
+      Beginner: "10-15 mins",
+      Intermediate: "20-25 mins",
+      Advanced: "30-40 mins",
+    },
   },
   {
     key: "shoots",
     label: "Shoots",
     description: "Shooting reps including form shooting, spot shooting, game shots, or free throws.",
+    standards: {
+      Beginner: "50 made free throws",
+      Intermediate: "50-100 made free throws / 25 made jump shots",
+      Advanced: "100 made free throws / 100 made jump shots",
+    },
   },
 ];
 
@@ -139,6 +186,19 @@ function createEmptyActivities(): ActivityChecks {
 }
 
 function createEmptyActivityNotes(): ActivityNotes {
+  return {
+    pushups: "",
+    sitUps: "",
+    squats: "",
+    lunges: "",
+    dribbles: "",
+    jumpRopes: "",
+    cardio: "",
+    shoots: "",
+  };
+}
+
+function createEmptyActivityLevels(): ActivityLevels {
   return {
     pushups: "",
     sitUps: "",
@@ -227,6 +287,7 @@ function createWorkoutForm(): WorkoutForm {
     advancedNotes: "",
     activities: createEmptyActivities(),
     activityNotes: createEmptyActivityNotes(),
+    activityLevels: createEmptyActivityLevels(),
   };
 }
 
@@ -259,6 +320,10 @@ function readWorkoutDraft(identity: AthleteIdentity, date: string): WorkoutForm 
       activityNotes: {
         ...createEmptyActivityNotes(),
         ...(parsed.activityNotes ?? {}),
+      },
+      activityLevels: {
+        ...createEmptyActivityLevels(),
+        ...(parsed.activityLevels ?? {}),
       },
     };
   } catch {
@@ -294,15 +359,24 @@ function formFromWorkoutLog(log: WorkoutLog): WorkoutForm {
       ...createEmptyActivityNotes(),
       ...log.activity_notes,
     },
+    activityLevels: {
+      ...createEmptyActivityLevels(),
+      ...log.activity_levels,
+    },
   };
 }
 
-function formatActivityNotes(activityNotes: ActivityNotes, activities: ActivityChecks) {
+function formatActivityNotes(
+  activityNotes: ActivityNotes,
+  activities: ActivityChecks,
+  activityLevels: ActivityLevels
+) {
   return WORKOUT_ACTIVITIES.map((activity) => ({
     label: activity.label,
     note: activityNotes[activity.key].trim(),
     checked: activities[activity.key],
-  })).filter((entry) => entry.checked || entry.note);
+    level: activityLevels[activity.key],
+  })).filter((entry) => entry.checked || entry.note || entry.level);
 }
 
 function countCompletedActivities(activities: ActivityChecks) {
@@ -406,6 +480,7 @@ function useWorkoutLogs() {
       workout_date: form.workoutDate,
       activities: form.activities,
       activity_notes: form.activityNotes,
+      activity_levels: form.activityLevels,
       notes: form.notes,
       focus_area: form.focusArea || null,
       effort_level: form.effortLevel ? Number(form.effortLevel) : null,
@@ -540,9 +615,6 @@ function HomeScreen({
           <img src={soldiersLogo} alt="San Diego Soldiers logo" className="brand-logo" />
           <div className="brand-text">
             <div className="brand-title">San Diego Soldiers</div>
-            <div className="brand-subtitle">
-              Athlete workout tracking with protected admin access
-            </div>
           </div>
         </div>
         <div className="status-area">
@@ -558,29 +630,6 @@ function HomeScreen({
               alt="San Diego Soldiers team splash"
               className="auth-hero-image"
             />
-            <div className="auth-hero-overlay">
-              <div className="panel-kicker">Program Access</div>
-              <h1 className="panel-title auth-hero-title">Choose how you want to enter the app.</h1>
-              <p className="auth-hero-copy">
-                Athletes only see their workout tools. Admin tools and the management
-                dashboard stay hidden unless the admin password is entered.
-              </p>
-            </div>
-          </div>
-
-          <div className="auth-hero-stats">
-            <div className="auth-hero-stat">
-              <span>Access</span>
-              <strong>Athlete + Admin</strong>
-            </div>
-            <div className="auth-hero-stat">
-              <span>Primary Use</span>
-              <strong>Phone Friendly</strong>
-            </div>
-            <div className="auth-hero-stat">
-              <span>Focus</span>
-              <strong>Daily Accountability</strong>
-            </div>
           </div>
           {message ? <div className="status-banner info">{message}</div> : null}
         </section>
@@ -980,6 +1029,10 @@ function AthleteWorkspace({
         ...createEmptyActivityNotes(),
         ...log.activity_notes,
       },
+      activityLevels: {
+        ...createEmptyActivityLevels(),
+        ...log.activity_levels,
+      },
       notes: current.notes || log.notes || "",
       focusArea: current.focusArea || (log.focus_area as FocusArea) || "",
       effortLevel:
@@ -1348,7 +1401,9 @@ function AthleteWorkspace({
             {WORKOUT_ACTIVITIES.map((activity) => {
               const isOpen = openActivityKey === activity.key;
               const hasContent =
-                form.activities[activity.key] || Boolean(form.activityNotes[activity.key].trim());
+                form.activities[activity.key] ||
+                Boolean(form.activityNotes[activity.key].trim()) ||
+                Boolean(form.activityLevels[activity.key]);
               const notePreview = form.activityNotes[activity.key].trim();
 
               return (
@@ -1379,6 +1434,12 @@ function AthleteWorkspace({
                                 ...current.activities,
                                 [activity.key]: event.target.checked,
                               },
+                              activityLevels: {
+                                ...current.activityLevels,
+                                [activity.key]: event.target.checked
+                                  ? current.activityLevels[activity.key]
+                                  : "",
+                              },
                             }))
                           }
                           onClick={(event) => event.stopPropagation()}
@@ -1389,7 +1450,9 @@ function AthleteWorkspace({
                         ) : null}
                       </span>
                       <span className="activity-toggle-meta">
-                        {form.activities[activity.key]
+                        {form.activityLevels[activity.key]
+                          ? form.activityLevels[activity.key]
+                          : form.activities[activity.key]
                           ? "Done"
                           : MANDATORY_ACTIVITY_KEYS.includes(activity.key)
                             ? "Required next"
@@ -1420,6 +1483,58 @@ function AthleteWorkspace({
                   {isOpen ? (
                     <div className="activity-card-body">
                       <p className="activity-card-copy">{activity.description}</p>
+                      <div className="activity-standards-card">
+                        <div className="activity-standards-title">Level standards</div>
+                        <div className="activity-level-grid">
+                          {(Object.entries(activity.standards) as Array<
+                            [Exclude<ActivityLevel, "">, string]
+                          >).map(([level, standard]) => (
+                            <button
+                              key={level}
+                              type="button"
+                              className={`activity-level-chip ${
+                                form.activityLevels[activity.key] === level ? "selected" : ""
+                              }`}
+                              onClick={() =>
+                                setForm((current) => ({
+                                  ...current,
+                                  activities: {
+                                    ...current.activities,
+                                    [activity.key]: true,
+                                  },
+                                  activityLevels: {
+                                    ...current.activityLevels,
+                                    [activity.key]: level,
+                                  },
+                                }))
+                              }
+                            >
+                              <strong>{level}</strong>
+                              <span>{standard}</span>
+                            </button>
+                          ))}
+                        </div>
+                        {activity.coachingTip ? (
+                          <div className="activity-coaching-tip">{activity.coachingTip}</div>
+                        ) : null}
+                        {form.activityLevels[activity.key] ? (
+                          <button
+                            type="button"
+                            className="activity-clear-level"
+                            onClick={() =>
+                              setForm((current) => ({
+                                ...current,
+                                activityLevels: {
+                                  ...current.activityLevels,
+                                  [activity.key]: "",
+                                },
+                              }))
+                            }
+                          >
+                            Clear saved level
+                          </button>
+                        ) : null}
+                      </div>
                       <label
                         className="activity-note-label"
                         htmlFor={`activity-note-${activity.key}`}
@@ -1535,7 +1650,7 @@ function AthleteWorkspace({
                   advancedNotes: event.target.value,
                 }))
               }
-              placeholder="Optional details like reps, makes, miles, time, or goals."
+              placeholder="Extra workout details"
             />
           </details>
 
@@ -1678,7 +1793,8 @@ function AthleteWorkspace({
                   .map(([key]) => activityLabel(key as WorkoutActivityKey));
                 const activityNotes = formatActivityNotes(
                   entry.activity_notes,
-                  entry.activities
+                  entry.activities,
+                  entry.activity_levels
                 );
 
                 return (
@@ -1703,7 +1819,9 @@ function AthleteWorkspace({
                       <div className="activity-note-list">
                         {activityNotes.map((item) => (
                           <div key={`${entry.id}-${item.label}`} className="activity-note-item">
-                            <strong>{item.label}:</strong> {item.note || "Completed"}
+                            <strong>{item.label}:</strong>{" "}
+                            {item.level ? `${item.level} level` : item.note ? item.note : "Completed"}
+                            {item.note && item.level ? ` - ${item.note}` : ""}
                           </div>
                         ))}
                       </div>
@@ -2367,7 +2485,8 @@ function AdminWorkoutOverview({
                     .map(([key]) => activityLabel(key as WorkoutActivityKey));
                   const activityNotes = formatActivityNotes(
                     entry.activity_notes,
-                    entry.activities
+                    entry.activities,
+                    entry.activity_levels
                   );
 
                   return (
@@ -2409,7 +2528,9 @@ function AdminWorkoutOverview({
                         <div className="activity-note-list">
                           {activityNotes.map((item) => (
                             <div key={`${entry.id}-${item.label}`} className="activity-note-item">
-                              <strong>{item.label}:</strong> {item.note || "Completed"}
+                              <strong>{item.label}:</strong>{" "}
+                              {item.level ? `${item.level} level` : item.note ? item.note : "Completed"}
+                              {item.note && item.level ? ` - ${item.note}` : ""}
                             </div>
                           ))}
                         </div>
