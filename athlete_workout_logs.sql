@@ -6,6 +6,7 @@ create table if not exists public.athlete_workout_logs (
   team_name text not null,
   workout_date date not null,
   activities jsonb not null default '{}'::jsonb,
+  activity_notes jsonb not null default '{}'::jsonb,
   notes text,
   focus_area text,
   effort_level integer,
@@ -13,6 +14,9 @@ create table if not exists public.athlete_workout_logs (
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now())
 );
+
+alter table public.athlete_workout_logs
+  add column if not exists activity_notes jsonb not null default '{}'::jsonb;
 
 create unique index if not exists athlete_workout_logs_unique_entry
   on public.athlete_workout_logs (lower(athlete_name), team_name, workout_date);

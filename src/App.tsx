@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import AdminPortal from "./AdminPortal";
 import soldiersLogo from "./assets/soldiers-logo.png";
 import "./app.css";
@@ -6,6 +6,7 @@ import {
   fetchWorkoutLogs,
   saveWorkoutLog,
   type ActivityChecks,
+  type ActivityNotes,
   type TeamName,
   type WorkoutActivityKey,
   type WorkoutDataSource,
@@ -40,6 +41,7 @@ type WorkoutForm = {
   effortLevel: string;
   advancedNotes: string;
   activities: ActivityChecks;
+  activityNotes: ActivityNotes;
 };
 
 type WorkoutActivityDefinition = {
@@ -90,7 +92,8 @@ const WORKOUT_ACTIVITIES: WorkoutActivityDefinition[] = [
   {
     key: "dribbles",
     label: "Dribbles",
-    description: "Ball-handling reps like pound dribbles, crossovers, combo work, or weak-hand drills.",
+    description:
+      "Ball-handling reps like pound dribbles, crossovers, combo work, or weak-hand drills.",
   },
   {
     key: "jumpRopes",
@@ -109,8 +112,7 @@ const WORKOUT_ACTIVITIES: WorkoutActivityDefinition[] = [
   },
 ];
 
-const ADMIN_PASSWORD =
-  import.meta.env.VITE_ADMIN_PASSWORD || "SoldiersAdmin";
+const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || "SoldiersAdmin";
 
 function createEmptyActivities(): ActivityChecks {
   return {
@@ -122,6 +124,19 @@ function createEmptyActivities(): ActivityChecks {
     jumpRopes: false,
     cardio: false,
     shoots: false,
+  };
+}
+
+function createEmptyActivityNotes(): ActivityNotes {
+  return {
+    pushups: "",
+    sitUps: "",
+    squats: "",
+    lunges: "",
+    dribbles: "",
+    jumpRopes: "",
+    cardio: "",
+    shoots: "",
   };
 }
 
@@ -159,7 +174,83 @@ function createWorkoutForm(): WorkoutForm {
     effortLevel: "",
     advancedNotes: "",
     activities: createEmptyActivities(),
+    activityNotes: createEmptyActivityNotes(),
   };
+}
+
+function workoutDraftStorageKey(identity: AthleteIdentity, date: string) {
+  return `soldiers-workout-draft::${identity.athleteName.toLowerCase()}::${identity.teamName}::${date}`;
+}
+
+function workoutFormSnapshot(form: WorkoutForm) {
+  return JSON.stringify(form);
+}
+
+function readWorkoutDraft(identity: AthleteIdentity, date: string): WorkoutForm | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = window.localStorage.getItem(workoutDraftStorageKey(identity, date));
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as Partial<WorkoutForm>;
+    return {
+      workoutDate: parsed.workoutDate || date,
+      notes: parsed.notes || "",
+      focusArea: (parsed.focusArea as FocusArea) || "",
+      effortLevel: parsed.effortLevel || "",
+      advancedNotes: parsed.advancedNotes || "",
+      activities: {
+        ...createEmptyActivities(),
+        ...(parsed.activities ?? {}),
+      },
+      activityNotes: {
+        ...createEmptyActivityNotes(),
+        ...(parsed.activityNotes ?? {}),
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeWorkoutDraft(identity: AthleteIdentity, form: WorkoutForm) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(
+    workoutDraftStorageKey(identity, form.workoutDate),
+    JSON.stringify(form)
+  );
+}
+
+function clearWorkoutDraft(identity: AthleteIdentity, date: string) {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(workoutDraftStorageKey(identity, date));
+}
+
+function formFromWorkoutLog(log: WorkoutLog): WorkoutForm {
+  return {
+    workoutDate: log.workout_date,
+    notes: log.notes ?? "",
+    focusArea: (log.focus_area as FocusArea) || "",
+    effortLevel: log.effort_level != null ? String(log.effort_level) : "",
+    advancedNotes: log.advanced_notes ?? "",
+    activities: {
+      ...createEmptyActivities(),
+      ...log.activities,
+    },
+    activityNotes: {
+      ...createEmptyActivityNotes(),
+      ...log.activity_notes,
+    },
+  };
+}
+
+function formatActivityNotes(activityNotes: ActivityNotes, activities: ActivityChecks) {
+  return WORKOUT_ACTIVITIES.map((activity) => ({
+    label: activity.label,
+    note: activityNotes[activity.key].trim(),
+    checked: activities[activity.key],
+  })).filter((entry) => entry.checked || entry.note);
 }
 
 function countCompletedActivities(activities: ActivityChecks) {
@@ -168,6 +259,17 @@ function countCompletedActivities(activities: ActivityChecks) {
 
 function activityLabel(key: WorkoutActivityKey) {
   return WORKOUT_ACTIVITIES.find((activity) => activity.key === key)?.label ?? key;
+}
+
+function statusTone(status: string) {
+  const normalized = status.toLowerCase();
+  if (normalized.includes("unable") || normalized.includes("not recognized")) {
+    return "error";
+  }
+  if (normalized.includes("save") || normalized.includes("loaded")) {
+    return "success";
+  }
+  return "info";
 }
 
 function useWorkoutLogs() {
@@ -193,15 +295,13 @@ function useWorkoutLogs() {
     }
   }
 
-  async function saveLog(
-    identity: AthleteIdentity,
-    form: WorkoutForm
-  ) {
+  async function saveLog(identity: AthleteIdentity, form: WorkoutForm) {
     const result = await saveWorkoutLog({
       athlete_name: identity.athleteName,
       team_name: identity.teamName,
       workout_date: form.workoutDate,
       activities: form.activities,
+      activity_notes: form.activityNotes,
       notes: form.notes,
       focus_area: form.focusArea || null,
       effort_level: form.effortLevel ? Number(form.effortLevel) : null,
@@ -387,9 +487,15 @@ function AthleteWorkspace({
   onBack: () => void;
   onSubmit: (form: WorkoutForm) => Promise<void>;
 }) {
-  const [form, setForm] = useState<WorkoutForm>(() => createWorkoutForm());
+  const [selectedDate, setSelectedDate] = useState(() => todayIsoDate());
+  const [form, setForm] = useState<WorkoutForm>(() => ({
+    ...createWorkoutForm(),
+    workoutDate: todayIsoDate(),
+  }));
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
+  const skipAutosaveRef = useRef(true);
+  const lastSavedSnapshotRef = useRef("");
 
   const personalLogs = useMemo(
     () =>
@@ -402,19 +508,40 @@ function AthleteWorkspace({
   );
 
   const latestLog = personalLogs[0] ?? null;
+  const selectedLog =
+    personalLogs.find((entry) => entry.workout_date === selectedDate) ?? null;
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  useEffect(() => {
+    const savedLog =
+      personalLogs.find((entry) => entry.workout_date === selectedDate) ?? null;
+    const nextForm = savedLog
+      ? formFromWorkoutLog(savedLog)
+      : readWorkoutDraft(identity, selectedDate) ?? {
+          ...createWorkoutForm(),
+          workoutDate: selectedDate,
+        };
+
+    const nextSnapshot = workoutFormSnapshot(nextForm);
+
+    if (savedLog) {
+      lastSavedSnapshotRef.current = nextSnapshot;
+      clearWorkoutDraft(identity, selectedDate);
+    } else {
+      lastSavedSnapshotRef.current = "";
+    }
+
+    skipAutosaveRef.current = true;
+    setForm(nextForm);
+  }, [identity, personalLogs, selectedDate]);
+
+  async function saveCurrentForm() {
     setSaving(true);
-    setStatus("");
 
     try {
       await onSubmit(form);
-      setStatus("Workout log saved successfully.");
-      setForm((current) => ({
-        ...createWorkoutForm(),
-        workoutDate: current.workoutDate,
-      }));
+      lastSavedSnapshotRef.current = workoutFormSnapshot(form);
+      clearWorkoutDraft(identity, form.workoutDate);
+      setStatus(`Saved ${formatDateLabel(form.workoutDate)}.`);
     } catch (saveError) {
       const message =
         saveError instanceof Error ? saveError.message : "Unable to save workout log.";
@@ -424,6 +551,47 @@ function AthleteWorkspace({
     }
   }
 
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setStatus("");
+    await saveCurrentForm();
+  }
+
+  useEffect(() => {
+    writeWorkoutDraft(identity, form);
+
+    const snapshot = workoutFormSnapshot(form);
+    if (skipAutosaveRef.current) {
+      skipAutosaveRef.current = false;
+      return;
+    }
+
+    if (snapshot === lastSavedSnapshotRef.current) {
+      setSaving(false);
+      return;
+    }
+
+    setSaving(true);
+    setStatus(`Saving changes for ${formatDateLabel(form.workoutDate)}...`);
+
+    const timer = window.setTimeout(async () => {
+      try {
+        await onSubmit(form);
+        lastSavedSnapshotRef.current = snapshot;
+        clearWorkoutDraft(identity, form.workoutDate);
+        setStatus(`All changes saved for ${formatDateLabel(form.workoutDate)}.`);
+      } catch (saveError) {
+        const message =
+          saveError instanceof Error ? saveError.message : "Unable to save workout log.";
+        setStatus(message);
+      } finally {
+        setSaving(false);
+      }
+    }, 700);
+
+    return () => window.clearTimeout(timer);
+  }, [form, identity, onSubmit]);
+
   return (
     <div className="app-shell">
       <header className="top-bar">
@@ -432,12 +600,14 @@ function AthleteWorkspace({
           <div className="brand-text">
             <div className="brand-title">Athlete Workout Log</div>
             <div className="brand-subtitle">
-              {identity.athleteName} · {identity.teamName}
+              {identity.athleteName} - {identity.teamName}
             </div>
           </div>
         </div>
         <div className="status-area">
-          <div className="app-status">Saving to {source === "supabase" ? "Supabase" : "this device"}</div>
+          <div className="app-status">
+            Saving to {source === "supabase" ? "Supabase" : "this device"}
+          </div>
           <button type="button" className="secondary-button" onClick={onBack}>
             Switch User
           </button>
@@ -450,21 +620,30 @@ function AthleteWorkspace({
           <div className="summary-value">{personalLogs.length}</div>
         </div>
         <div className="summary-card">
-          <div className="summary-label">Latest Workout</div>
+          <div className="summary-label">Selected Date</div>
           <div className="summary-value summary-value-small">
-            {latestLog ? formatDateLabel(latestLog.workout_date) : "None yet"}
+            {formatDateLabel(selectedDate)}
           </div>
         </div>
         <div className="summary-card">
-          <div className="summary-label">Latest Activities</div>
-          <div className="summary-value">{latestLog ? countCompletedActivities(latestLog.activities) : 0}</div>
+          <div className="summary-label">Selected Activities</div>
+          <div className="summary-value">{countCompletedActivities(form.activities)}</div>
+        </div>
+        <div className="summary-card">
+          <div className="summary-label">Last Saved Workout</div>
+          <div className="summary-value summary-value-small">
+            {latestLog ? formatDateLabel(latestLog.workout_date) : "None yet"}
+          </div>
         </div>
       </div>
 
       <div className="athlete-layout">
         <form className="card" onSubmit={handleSubmit}>
           <div className="panel-kicker">Daily Entry</div>
-          <h2 className="section-title">Log today&apos;s workout</h2>
+          <h2 className="section-title">Workout journal by date</h2>
+          <div className="auth-help-text">
+            Changes save automatically as you go. Switch the date to review or update an older workout.
+          </div>
 
           <label className="field-label" htmlFor="workout-date">
             Date
@@ -473,33 +652,64 @@ function AthleteWorkspace({
             id="workout-date"
             className="input"
             type="date"
-            value={form.workoutDate}
-            onChange={(event) =>
-              setForm((current) => ({ ...current, workoutDate: event.target.value }))
-            }
+            value={selectedDate}
+            onChange={(event) => setSelectedDate(event.target.value)}
           />
+
+          {selectedLog ? (
+            <div className="status-banner info">
+              Loaded saved workout for {formatDateLabel(selectedDate)}.
+            </div>
+          ) : (
+            <div className="status-banner info">
+              No saved workout for this date yet. Start checking items and the app will remember them.
+            </div>
+          )}
 
           <div className="activity-grid">
             {WORKOUT_ACTIVITIES.map((activity) => (
-              <label key={activity.key} className="activity-card">
+              <div key={activity.key} className="activity-card">
                 <div className="activity-card-top">
-                  <input
-                    type="checkbox"
-                    checked={form.activities[activity.key]}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        activities: {
-                          ...current.activities,
-                          [activity.key]: event.target.checked,
-                        },
-                      }))
-                    }
-                  />
-                  <span className="activity-card-title">{activity.label}</span>
+                  <label className="activity-checkbox-row">
+                    <input
+                      type="checkbox"
+                      checked={form.activities[activity.key]}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          activities: {
+                            ...current.activities,
+                            [activity.key]: event.target.checked,
+                          },
+                        }))
+                      }
+                    />
+                    <span className="activity-card-title">{activity.label}</span>
+                  </label>
                 </div>
                 <p className="activity-card-copy">{activity.description}</p>
-              </label>
+                <label
+                  className="activity-note-label"
+                  htmlFor={`activity-note-${activity.key}`}
+                >
+                  Notes for {activity.label}
+                </label>
+                <textarea
+                  id={`activity-note-${activity.key}`}
+                  className="textarea activity-note-textarea"
+                  value={form.activityNotes[activity.key]}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      activityNotes: {
+                        ...current.activityNotes,
+                        [activity.key]: event.target.value,
+                      },
+                    }))
+                  }
+                  placeholder={`Add ${activity.label.toLowerCase()} details, reps, time, or reminders`}
+                />
+              </div>
             ))}
           </div>
 
@@ -589,19 +799,17 @@ function AthleteWorkspace({
           </details>
 
           {status ? (
-            <div className={`status-banner ${status.includes("saved") ? "success" : "error"}`}>
-              {status}
-            </div>
+            <div className={`status-banner ${statusTone(status)}`}>{status}</div>
           ) : null}
 
           <button type="submit" className="primary-button" disabled={saving}>
-            {saving ? "Saving..." : "Save Workout Log"}
+            {saving ? "Saving..." : "Save Now"}
           </button>
         </form>
 
         <section className="card">
-          <div className="panel-kicker">Recent Activity</div>
-          <h2 className="section-title">My latest workout history</h2>
+          <div className="panel-kicker">Workout History</div>
+          <h2 className="section-title">My saved dates and notes</h2>
           <div className="log-list">
             {personalLogs.length === 0 ? (
               <div className="empty-text">No workouts logged yet.</div>
@@ -610,6 +818,10 @@ function AthleteWorkspace({
                 const completedActivities = Object.entries(entry.activities)
                   .filter(([, checked]) => checked)
                   .map(([key]) => activityLabel(key as WorkoutActivityKey));
+                const activityNotes = formatActivityNotes(
+                  entry.activity_notes,
+                  entry.activities
+                );
 
                 return (
                   <article key={entry.id} className="workout-log-card">
@@ -629,9 +841,25 @@ function AthleteWorkspace({
                       )}
                     </div>
                     {entry.notes ? <div className="workout-log-copy">{entry.notes}</div> : null}
+                    {activityNotes.length > 0 ? (
+                      <div className="activity-note-list">
+                        {activityNotes.map((item) => (
+                          <div key={`${entry.id}-${item.label}`} className="activity-note-item">
+                            <strong>{item.label}:</strong> {item.note || "Completed"}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                     {entry.advanced_notes ? (
                       <div className="workout-log-copy muted">{entry.advanced_notes}</div>
                     ) : null}
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => setSelectedDate(entry.workout_date)}
+                    >
+                      Open This Date
+                    </button>
                   </article>
                 );
               })
@@ -664,7 +892,15 @@ function AdminWorkoutOverview({
     if (!term) return logs;
 
     return logs.filter((entry) =>
-      [entry.athlete_name, entry.team_name, entry.workout_date, entry.notes, entry.focus_area]
+      [
+        entry.athlete_name,
+        entry.team_name,
+        entry.workout_date,
+        entry.notes,
+        entry.focus_area,
+        entry.advanced_notes,
+        ...Object.values(entry.activity_notes),
+      ]
         .filter(Boolean)
         .join(" ")
         .toLowerCase()
@@ -701,7 +937,7 @@ function AdminWorkoutOverview({
     return [...groups.entries()].map(([date, group]) => ({
       id: date,
       title: formatDateLabel(date),
-      subtitle: `${group.athletes.size} athletes · ${group.teams.size} teams`,
+      subtitle: `${group.athletes.size} athletes - ${group.teams.size} teams`,
       stat: `${group.activityTotal} items`,
       detail: `${group.logCount} logs submitted`,
     }));
@@ -728,7 +964,7 @@ function AdminWorkoutOverview({
     return [...groups.entries()].map(([weekStart, group]) => ({
       id: weekStart,
       title: `Week of ${formatDateLabel(weekStart)}`,
-      subtitle: `${group.athletes.size} athletes · ${group.teams.size} teams`,
+      subtitle: `${group.athletes.size} athletes - ${group.teams.size} teams`,
       stat: `${group.activityTotal} items`,
       detail: `${group.logCount} logs submitted`,
     }));
@@ -737,7 +973,13 @@ function AdminWorkoutOverview({
   const athleteRows = useMemo(() => {
     const groups = new Map<
       string,
-      { athlete: string; team: TeamName; activityTotal: number; logCount: number; lastDate: string }
+      {
+        athlete: string;
+        team: TeamName;
+        activityTotal: number;
+        logCount: number;
+        lastDate: string;
+      }
     >();
 
     filteredLogs.forEach((entry) => {
@@ -766,7 +1008,7 @@ function AdminWorkoutOverview({
       .map((group) => ({
         id: `${group.athlete}-${group.team}`,
         title: group.athlete,
-        subtitle: `${group.team} · last workout ${formatDateLabel(group.lastDate)}`,
+        subtitle: `${group.team} - last workout ${formatDateLabel(group.lastDate)}`,
         stat: `${group.logCount} logs`,
         detail: `${group.activityTotal} checked items`,
       }));
@@ -862,6 +1104,10 @@ function AdminWorkoutOverview({
                   const labels = Object.entries(entry.activities)
                     .filter(([, checked]) => checked)
                     .map(([key]) => activityLabel(key as WorkoutActivityKey));
+                  const activityNotes = formatActivityNotes(
+                    entry.activity_notes,
+                    entry.activities
+                  );
 
                   return (
                     <article key={entry.id} className="workout-log-card">
@@ -882,6 +1128,15 @@ function AdminWorkoutOverview({
                         )}
                       </div>
                       {entry.notes ? <div className="workout-log-copy">{entry.notes}</div> : null}
+                      {activityNotes.length > 0 ? (
+                        <div className="activity-note-list">
+                          {activityNotes.map((item) => (
+                            <div key={`${entry.id}-${item.label}`} className="activity-note-item">
+                              <strong>{item.label}:</strong> {item.note || "Completed"}
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
                       {entry.advanced_notes ? (
                         <div className="workout-log-copy muted">{entry.advanced_notes}</div>
                       ) : null}

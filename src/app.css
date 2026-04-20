@@ -2072,7 +2072,6 @@ textarea {
   display: grid;
   gap: 10px;
   padding: 14px;
-  cursor: pointer;
 }
 
 .activity-card-top,
@@ -2090,6 +2089,23 @@ textarea {
   font-size: 18px;
   font-weight: 800;
   color: #f8fafc;
+}
+
+.activity-checkbox-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.activity-note-label {
+  color: #bfdbfe;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.activity-note-textarea {
+  min-height: 88px;
 }
 
 .advanced-details {
@@ -2133,6 +2149,19 @@ textarea {
   flex-wrap: wrap;
   gap: 8px;
   margin: 10px 0;
+}
+
+.activity-note-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.activity-note-item {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(30, 41, 59, 0.72);
+  color: #dbeafe;
 }
 
 .overview-list {

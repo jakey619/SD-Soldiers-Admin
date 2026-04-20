@@ -26,6 +26,7 @@ export type WorkoutActivityKey =
   | "shoots";
 
 export type ActivityChecks = Record<WorkoutActivityKey, boolean>;
+export type ActivityNotes = Record<WorkoutActivityKey, string>;
 
 export type WorkoutLog = {
   id: string;
@@ -33,6 +34,7 @@ export type WorkoutLog = {
   team_name: TeamName;
   workout_date: string;
   activities: ActivityChecks;
+  activity_notes: ActivityNotes;
   notes: string | null;
   focus_area: string | null;
   effort_level: number | null;
@@ -49,6 +51,53 @@ export type SaveWorkoutLogInput = Omit<
 export type WorkoutDataSource = "supabase" | "local";
 
 const STORAGE_KEY = "soldiers-athlete-workout-logs";
+
+function normalizeActivityChecks(value: unknown): ActivityChecks {
+  const source = typeof value === "object" && value ? value : {};
+
+  return {
+    pushups: Boolean((source as Partial<ActivityChecks>).pushups),
+    sitUps: Boolean((source as Partial<ActivityChecks>).sitUps),
+    squats: Boolean((source as Partial<ActivityChecks>).squats),
+    lunges: Boolean((source as Partial<ActivityChecks>).lunges),
+    dribbles: Boolean((source as Partial<ActivityChecks>).dribbles),
+    jumpRopes: Boolean((source as Partial<ActivityChecks>).jumpRopes),
+    cardio: Boolean((source as Partial<ActivityChecks>).cardio),
+    shoots: Boolean((source as Partial<ActivityChecks>).shoots),
+  };
+}
+
+function normalizeActivityNotes(value: unknown): ActivityNotes {
+  const source = typeof value === "object" && value ? value : {};
+
+  return {
+    pushups: String((source as Partial<ActivityNotes>).pushups ?? "").trim(),
+    sitUps: String((source as Partial<ActivityNotes>).sitUps ?? "").trim(),
+    squats: String((source as Partial<ActivityNotes>).squats ?? "").trim(),
+    lunges: String((source as Partial<ActivityNotes>).lunges ?? "").trim(),
+    dribbles: String((source as Partial<ActivityNotes>).dribbles ?? "").trim(),
+    jumpRopes: String((source as Partial<ActivityNotes>).jumpRopes ?? "").trim(),
+    cardio: String((source as Partial<ActivityNotes>).cardio ?? "").trim(),
+    shoots: String((source as Partial<ActivityNotes>).shoots ?? "").trim(),
+  };
+}
+
+function normalizeLog(log: Partial<WorkoutLog> & Pick<WorkoutLog, "id">): WorkoutLog {
+  return {
+    id: log.id,
+    athlete_name: String(log.athlete_name ?? ""),
+    team_name: (log.team_name ?? "Undecided") as TeamName,
+    workout_date: String(log.workout_date ?? ""),
+    activities: normalizeActivityChecks(log.activities),
+    activity_notes: normalizeActivityNotes(log.activity_notes),
+    notes: log.notes ?? null,
+    focus_area: log.focus_area ?? null,
+    effort_level: log.effort_level ?? null,
+    advanced_notes: log.advanced_notes ?? null,
+    created_at: String(log.created_at ?? new Date().toISOString()),
+    updated_at: String(log.updated_at ?? new Date().toISOString()),
+  };
+}
 
 function isTableUnavailable(message: string | undefined) {
   if (!message) return false;
@@ -80,7 +129,7 @@ function readLocalLogs() {
     if (!raw) return [];
 
     const parsed = JSON.parse(raw) as WorkoutLog[];
-    return sortLogs(parsed);
+    return sortLogs(parsed.map((entry) => normalizeLog(entry)));
   } catch {
     return [];
   }
@@ -110,7 +159,7 @@ export async function fetchWorkoutLogs(): Promise<{
   }
 
   return {
-    logs: sortLogs((data ?? []) as WorkoutLog[]),
+    logs: sortLogs(((data ?? []) as WorkoutLog[]).map((entry) => normalizeLog(entry))),
     source: "supabase",
   };
 }
@@ -125,7 +174,8 @@ export async function saveWorkoutLog(
     athlete_name: input.athlete_name.trim(),
     team_name: input.team_name,
     workout_date: input.workout_date,
-    activities: input.activities,
+    activities: normalizeActivityChecks(input.activities),
+    activity_notes: normalizeActivityNotes(input.activity_notes),
     notes: input.notes?.trim() || null,
     focus_area: input.focus_area?.trim() || null,
     effort_level: input.effort_level ?? null,
@@ -156,17 +206,17 @@ export async function saveWorkoutLog(
 
     const nextLog: WorkoutLog =
       existingIndex >= 0
-        ? {
+        ? normalizeLog({
             ...logs[existingIndex],
             ...payload,
             updated_at: now,
-          }
-        : {
+          })
+        : normalizeLog({
             id: `local-${Date.now()}`,
             ...payload,
             created_at: now,
             updated_at: now,
-          };
+          });
 
     const nextLogs = [...logs];
     if (existingIndex >= 0) {
@@ -180,7 +230,7 @@ export async function saveWorkoutLog(
   }
 
   return {
-    log: data as WorkoutLog,
+    log: normalizeLog(data as WorkoutLog),
     source: "supabase",
   };
 }
