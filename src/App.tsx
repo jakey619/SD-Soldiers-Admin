@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import AdminPortal from "./AdminPortal";
 import soldiersLogo from "./assets/soldiers-logo.png";
+import soldiersSplash from "./assets/soldiers-logo.jpg";
 import "./app.css";
 import { supabase } from "./lib/supabase";
 import {
@@ -17,6 +18,7 @@ import {
 type AccessMode = "home" | "athlete" | "admin";
 type AdminView = "workouts" | "management";
 type SummaryView = "daily" | "weekly" | "athlete";
+type CompletionFilter = "all" | "complete" | "incomplete";
 type FocusArea =
   | ""
   | "Ball Handling"
@@ -57,7 +59,7 @@ type AthletePlayerOption = {
   teamName: TeamName;
 };
 
-const APP_VERSION = "2.2.0";
+const APP_VERSION = "2.2.1";
 
 const TEAM_NAMES: TeamName[] = [
   "15u Salute",
@@ -87,6 +89,12 @@ const WORKOUT_ACTIVITIES: WorkoutActivityDefinition[] = [
     description: "Core training focused on trunk control and abdominal endurance.",
   },
   {
+    key: "dribbles",
+    label: "Dribbles",
+    description:
+      "Ball-handling reps like pound dribbles, crossovers, combo work, or weak-hand drills.",
+  },
+  {
     key: "squats",
     label: "Squats",
     description: "Lower-body strength and explosion work with bodyweight or added resistance.",
@@ -95,12 +103,6 @@ const WORKOUT_ACTIVITIES: WorkoutActivityDefinition[] = [
     key: "lunges",
     label: "Lunges",
     description: "Single-leg movement work for balance, strength, and mobility.",
-  },
-  {
-    key: "dribbles",
-    label: "Dribbles",
-    description:
-      "Ball-handling reps like pound dribbles, crossovers, combo work, or weak-hand drills.",
   },
   {
     key: "jumpRopes",
@@ -120,6 +122,8 @@ const WORKOUT_ACTIVITIES: WorkoutActivityDefinition[] = [
 ];
 
 const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || "SoldiersAdmin";
+const REQUIRED_DAILY_TASK_COUNT = 5;
+const MANDATORY_ACTIVITY_KEYS: WorkoutActivityKey[] = ["pushups", "sitUps", "dribbles"];
 
 function createEmptyActivities(): ActivityChecks {
   return {
@@ -178,6 +182,40 @@ function shiftIsoDate(dateString: string, dayOffset: number) {
   if (Number.isNaN(date.getTime())) return todayIsoDate();
   date.setDate(date.getDate() + dayOffset);
   return date.toISOString().slice(0, 10);
+}
+
+function isBeforeDate(left: string, right: string) {
+  return new Date(`${left}T12:00:00`).getTime() < new Date(`${right}T12:00:00`).getTime();
+}
+
+function formatMonthLabel(monthKey: string) {
+  const date = new Date(`${monthKey}-01T12:00:00`);
+  if (Number.isNaN(date.getTime())) return monthKey;
+  return date.toLocaleDateString(undefined, {
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function shiftMonth(monthKey: string, monthOffset: number) {
+  const date = new Date(`${monthKey}-01T12:00:00`);
+  if (Number.isNaN(date.getTime())) return todayIsoDate().slice(0, 7);
+  date.setMonth(date.getMonth() + monthOffset);
+  return date.toISOString().slice(0, 7);
+}
+
+function buildCalendarDays(monthKey: string) {
+  const start = new Date(`${monthKey}-01T12:00:00`);
+  if (Number.isNaN(start.getTime())) return [] as string[];
+
+  const year = start.getFullYear();
+  const month = start.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  return Array.from({ length: daysInMonth }, (_, index) => {
+    const date = new Date(year, month, index + 1, 12, 0, 0);
+    return date.toISOString().slice(0, 10);
+  });
 }
 
 function createWorkoutForm(): WorkoutForm {
@@ -275,10 +313,62 @@ function activityLabel(key: WorkoutActivityKey) {
   return WORKOUT_ACTIVITIES.find((activity) => activity.key === key)?.label ?? key;
 }
 
+function getMissingMandatoryActivities(activities: ActivityChecks) {
+  return MANDATORY_ACTIVITY_KEYS.filter((key) => !activities[key]).map(activityLabel);
+}
+
+function meetsDailyWorkoutRequirement(activities: ActivityChecks) {
+  return (
+    countCompletedActivities(activities) >= REQUIRED_DAILY_TASK_COUNT &&
+    getMissingMandatoryActivities(activities).length === 0
+  );
+}
+
+function dailyRequirementMessage(activities: ActivityChecks) {
+  const missingMandatory = getMissingMandatoryActivities(activities);
+  const completedCount = countCompletedActivities(activities);
+
+  if (meetsDailyWorkoutRequirement(activities)) {
+    return `Daily requirement met: ${completedCount} tasks completed, including all mandatory items.`;
+  }
+
+  if (missingMandatory.length > 0 && completedCount < REQUIRED_DAILY_TASK_COUNT) {
+    return `Still needed: ${REQUIRED_DAILY_TASK_COUNT - completedCount} more task(s), plus ${missingMandatory.join(", ")}.`;
+  }
+
+  if (missingMandatory.length > 0) {
+    return `Mandatory tasks still missing: ${missingMandatory.join(", ")}.`;
+  }
+
+  return `Complete ${REQUIRED_DAILY_TASK_COUNT - completedCount} more task(s) to finish the day.`;
+}
+
+function completionLabel(activities: ActivityChecks) {
+  return meetsDailyWorkoutRequirement(activities) ? "Complete" : "Incomplete";
+}
+
+function clampPercent(value: number) {
+  return Math.max(0, Math.min(100, value));
+}
+
+function buildRingStyle(percent: number, color: string) {
+  const safePercent = clampPercent(percent);
+  return {
+    background: `conic-gradient(${color} 0deg ${safePercent * 3.6}deg, rgba(30, 41, 59, 0.88) ${safePercent * 3.6}deg 360deg)`,
+  };
+}
+
 function statusTone(status: string) {
   const normalized = status.toLowerCase();
   if (normalized.includes("unable") || normalized.includes("not recognized")) {
     return "error";
+  }
+  if (
+    normalized.includes("still needed") ||
+    normalized.includes("mandatory") ||
+    normalized.includes("draft saved")
+  ) {
+    return "warn";
   }
   if (normalized.includes("save") || normalized.includes("loaded")) {
     return "success";
@@ -462,12 +552,36 @@ function HomeScreen({
 
       <main className="auth-layout">
         <section className="card auth-card auth-hero-card">
-          <div className="panel-kicker">Program Access</div>
-          <h1 className="panel-title">Choose how you want to enter the app.</h1>
-          <p className="auth-hero-copy">
-            Athletes only see their workout tools. Admin tools and the management
-            dashboard stay hidden unless the admin password is entered.
-          </p>
+          <div className="auth-hero-media">
+            <img
+              src={soldiersSplash}
+              alt="San Diego Soldiers team splash"
+              className="auth-hero-image"
+            />
+            <div className="auth-hero-overlay">
+              <div className="panel-kicker">Program Access</div>
+              <h1 className="panel-title auth-hero-title">Choose how you want to enter the app.</h1>
+              <p className="auth-hero-copy">
+                Athletes only see their workout tools. Admin tools and the management
+                dashboard stay hidden unless the admin password is entered.
+              </p>
+            </div>
+          </div>
+
+          <div className="auth-hero-stats">
+            <div className="auth-hero-stat">
+              <span>Access</span>
+              <strong>Athlete + Admin</strong>
+            </div>
+            <div className="auth-hero-stat">
+              <span>Primary Use</span>
+              <strong>Phone Friendly</strong>
+            </div>
+            <div className="auth-hero-stat">
+              <span>Focus</span>
+              <strong>Daily Accountability</strong>
+            </div>
+          </div>
           {message ? <div className="status-banner info">{message}</div> : null}
         </section>
 
@@ -594,9 +708,14 @@ function AthleteWorkspace({
   const [openActivityKey, setOpenActivityKey] = useState<WorkoutActivityKey | null>("pushups");
   const [historyExpanded, setHistoryExpanded] = useState(false);
   const [advancedExpanded, setAdvancedExpanded] = useState(false);
+  const [historySheetOpen, setHistorySheetOpen] = useState(false);
+  const [historySearch, setHistorySearch] = useState("");
+  const [calendarMonth, setCalendarMonth] = useState(() => todayIsoDate().slice(0, 7));
+  const [celebrating, setCelebrating] = useState(false);
   const skipAutosaveRef = useRef(true);
   const lastSavedSnapshotRef = useRef("");
   const historyRef = useRef<HTMLElement | null>(null);
+  const previousCompleteStateRef = useRef(false);
 
   const personalLogs = useMemo(
     () =>
@@ -612,6 +731,156 @@ function AthleteWorkspace({
     personalLogs.find((entry) => entry.workout_date === selectedDate) ?? null;
   const activityCount = countCompletedActivities(form.activities);
   const historyPreview = personalLogs.slice(0, historyExpanded ? 20 : 4);
+  const selectedActivityRatio = `${activityCount}/${WORKOUT_ACTIVITIES.length}`;
+  const requiredProgressRatio = `${Math.min(activityCount, REQUIRED_DAILY_TASK_COUNT)}/${REQUIRED_DAILY_TASK_COUNT}`;
+  const mandatoryCompletedCount = MANDATORY_ACTIVITY_KEYS.filter((key) => form.activities[key]).length;
+  const mandatoryProgressRatio = `${mandatoryCompletedCount}/${MANDATORY_ACTIVITY_KEYS.length}`;
+  const previousLog =
+    personalLogs.find((entry) => isBeforeDate(entry.workout_date, selectedDate)) ?? null;
+  const dailyRequirementMet = meetsDailyWorkoutRequirement(form.activities);
+  const requirementMessage = dailyRequirementMessage(form.activities);
+  const remainingTaskCount = Math.max(REQUIRED_DAILY_TASK_COUNT - activityCount, 0);
+  const missingMandatory = getMissingMandatoryActivities(form.activities);
+  const personalLogMap = useMemo(
+    () => new Map(personalLogs.map((entry) => [entry.workout_date, entry])),
+    [personalLogs]
+  );
+  const calendarDays = useMemo(() => buildCalendarDays(calendarMonth), [calendarMonth]);
+  const today = todayIsoDate();
+  const yesterday = shiftIsoDate(today, -1);
+  const weekStart = startOfWeekLabel(today);
+  const currentStreak = useMemo(() => {
+    const completeDates = personalLogs
+      .filter((entry) => meetsDailyWorkoutRequirement(entry.activities))
+      .map((entry) => entry.workout_date)
+      .sort((a, b) => b.localeCompare(a));
+
+    if (completeDates.length === 0) return 0;
+
+    let streak = 1;
+    let cursor = completeDates[0];
+
+    for (let index = 1; index < completeDates.length; index += 1) {
+      const expectedPrevious = shiftIsoDate(cursor, -1);
+      if (completeDates[index] !== expectedPrevious) {
+        break;
+      }
+
+      streak += 1;
+      cursor = completeDates[index];
+    }
+
+    return streak;
+  }, [personalLogs]);
+  const lastCompleteDate = useMemo(() => {
+    const completeLog = personalLogs.find((entry) => meetsDailyWorkoutRequirement(entry.activities));
+    return completeLog?.workout_date ?? null;
+  }, [personalLogs]);
+  const streakGoal = 7;
+  const targetPercent = (Math.min(activityCount, REQUIRED_DAILY_TASK_COUNT) / REQUIRED_DAILY_TASK_COUNT) * 100;
+  const mandatoryPercent = (mandatoryCompletedCount / MANDATORY_ACTIVITY_KEYS.length) * 100;
+  const streakPercent = (Math.min(currentStreak, streakGoal) / streakGoal) * 100;
+  const weeklyLogs = personalLogs.filter(
+    (entry) => entry.workout_date >= weekStart && entry.workout_date <= today
+  );
+  const weeklyCompletedLogs = weeklyLogs.filter((entry) =>
+    meetsDailyWorkoutRequirement(entry.activities)
+  );
+  const weeklyLoggedCount = weeklyLogs.length;
+  const weeklyCompletedCount = weeklyCompletedLogs.length;
+  const bestStreak = useMemo(() => {
+    const completeDates = personalLogs
+      .filter((entry) => meetsDailyWorkoutRequirement(entry.activities))
+      .map((entry) => entry.workout_date)
+      .sort((a, b) => a.localeCompare(b));
+
+    if (completeDates.length === 0) return 0;
+
+    let longest = 1;
+    let running = 1;
+
+    for (let index = 1; index < completeDates.length; index += 1) {
+      const expected = shiftIsoDate(completeDates[index - 1], 1);
+      if (completeDates[index] === expected) {
+        running += 1;
+        longest = Math.max(longest, running);
+      } else {
+        running = 1;
+      }
+    }
+
+    return longest;
+  }, [personalLogs]);
+  const recentAccountability = [
+    {
+      date: today,
+      label: "Today",
+      log: personalLogMap.get(today) ?? null,
+    },
+    {
+      date: yesterday,
+      label: "Yesterday",
+      log: personalLogMap.get(yesterday) ?? null,
+    },
+  ];
+  const accountabilityAlerts = recentAccountability.filter((entry) => {
+    if (!entry.log) return true;
+    return !meetsDailyWorkoutRequirement(entry.log.activities);
+  });
+  const suggestedActivities = WORKOUT_ACTIVITIES.filter(
+    (activity) => !form.activities[activity.key]
+  ).sort((left, right) => {
+    const leftRequired = MANDATORY_ACTIVITY_KEYS.includes(left.key) ? 0 : 1;
+    const rightRequired = MANDATORY_ACTIVITY_KEYS.includes(right.key) ? 0 : 1;
+    return leftRequired - rightRequired;
+  });
+  const topSuggestedActivities = suggestedActivities.slice(0, 3);
+  const nextActionCopy = dailyRequirementMet
+    ? "Everything required is done. Add notes, review the day, or move to tomorrow."
+    : topSuggestedActivities.length > 0
+      ? `Best next step: ${topSuggestedActivities
+          .map((activity) => activity.label)
+          .join(", ")}.`
+      : "Review your notes and make sure the required work is checked off.";
+  const weeklyRewardTone =
+    currentStreak >= streakGoal ? "elite" : currentStreak >= 4 ? "hot" : "building";
+  const weeklyRewardTitle =
+    weeklyRewardTone === "elite"
+      ? "7-day streak unlocked"
+      : weeklyRewardTone === "hot"
+        ? "Streak is heating up"
+        : "Momentum is building";
+  const weeklyRewardCopy =
+    weeklyRewardTone === "elite"
+      ? "You've built a full week of complete days. Keep protecting the streak."
+      : weeklyRewardTone === "hot"
+        ? `${streakGoal - currentStreak} more complete day(s) to unlock your 7-day streak badge.`
+        : "Complete today, then stack a few more days to build your rhythm.";
+  const athleteMomentumMessage = dailyRequirementMet
+    ? currentStreak >= streakGoal
+      ? "All rings closed and your streak is rolling. Keep stacking complete days."
+      : `All rings closed for today. ${streakGoal - Math.min(currentStreak, streakGoal)} more day(s) to reach a 7-day streak.`
+    : missingMandatory.length > 0
+      ? `Knock out the required work first: ${missingMandatory.join(", ")}.`
+      : remainingTaskCount > 0
+        ? `You're close. Complete ${remainingTaskCount} more task(s) to close the day.`
+        : "You have enough tasks checked, but the required items still need to be completed.";
+  const filteredHistoryLogs = personalLogs.filter((entry) => {
+    const term = historySearch.trim().toLowerCase();
+    if (!term) return true;
+
+    return [
+      entry.workout_date,
+      formatDateLabel(entry.workout_date),
+      entry.notes,
+      entry.advanced_notes,
+      ...Object.values(entry.activity_notes),
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+      .includes(term);
+  });
 
   useEffect(() => {
     const savedLog =
@@ -648,14 +917,43 @@ function AthleteWorkspace({
     });
   }, [identity, personalLogs, selectedDate]);
 
-  async function saveCurrentForm() {
+  useEffect(() => {
+    setCalendarMonth(selectedDate.slice(0, 7));
+  }, [selectedDate]);
+
+  useEffect(() => {
+    if (dailyRequirementMet && !previousCompleteStateRef.current) {
+      setCelebrating(true);
+      const timer = window.setTimeout(() => setCelebrating(false), 2200);
+      previousCompleteStateRef.current = true;
+      return () => window.clearTimeout(timer);
+    }
+
+    if (!dailyRequirementMet) {
+      previousCompleteStateRef.current = false;
+      setCelebrating(false);
+    }
+  }, [dailyRequirementMet]);
+
+  async function saveCurrentForm(options?: { requireComplete?: boolean }) {
+    if (options?.requireComplete && !dailyRequirementMet) {
+      setStatus(
+        `Final save blocked. ${dailyRequirementMessage(form.activities)}`
+      );
+      return;
+    }
+
     setSaving(true);
 
     try {
       await onSubmit(form);
       lastSavedSnapshotRef.current = workoutFormSnapshot(form);
       clearWorkoutDraft(identity, form.workoutDate);
-      setStatus(`Saved ${formatDateLabel(form.workoutDate)}.`);
+      setStatus(
+        dailyRequirementMet
+          ? `Saved ${formatDateLabel(form.workoutDate)}. Daily requirement met.`
+          : `Draft saved for ${formatDateLabel(form.workoutDate)}. ${dailyRequirementMessage(form.activities)}`
+      );
     } catch (saveError) {
       const message =
         saveError instanceof Error ? saveError.message : "Unable to save workout log.";
@@ -668,7 +966,27 @@ function AthleteWorkspace({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setStatus("");
-    await saveCurrentForm();
+    await saveCurrentForm({ requireComplete: true });
+  }
+
+  function applyTemplateFromLog(log: WorkoutLog, label: string) {
+    setForm((current) => ({
+      ...current,
+      activities: {
+        ...createEmptyActivities(),
+        ...log.activities,
+      },
+      activityNotes: {
+        ...createEmptyActivityNotes(),
+        ...log.activity_notes,
+      },
+      notes: current.notes || log.notes || "",
+      focusArea: current.focusArea || (log.focus_area as FocusArea) || "",
+      effortLevel:
+        current.effortLevel || (log.effort_level != null ? String(log.effort_level) : ""),
+      advancedNotes: current.advancedNotes || log.advanced_notes || "",
+    }));
+    setStatus(`Loaded ${label} into ${formatDateLabel(selectedDate)}.`);
   }
 
   useEffect(() => {
@@ -693,7 +1011,11 @@ function AthleteWorkspace({
         await onSubmit(form);
         lastSavedSnapshotRef.current = snapshot;
         clearWorkoutDraft(identity, form.workoutDate);
-        setStatus(`All changes saved for ${formatDateLabel(form.workoutDate)}.`);
+        setStatus(
+          dailyRequirementMet
+            ? `All changes saved for ${formatDateLabel(form.workoutDate)}. Daily requirement met.`
+            : `Draft saved for ${formatDateLabel(form.workoutDate)}. ${dailyRequirementMessage(form.activities)}`
+        );
       } catch (saveError) {
         const message =
           saveError instanceof Error ? saveError.message : "Unable to save workout log.";
@@ -728,12 +1050,12 @@ function AthleteWorkspace({
             <strong>{formatDateLabel(selectedDate)}</strong>
           </div>
           <div className="athlete-status-item">
-            <span>Checked</span>
-            <strong>{activityCount}</strong>
+            <span>Daily Goal</span>
+            <strong>{requiredProgressRatio}</strong>
           </div>
           <div className="athlete-status-item">
             <span>Status</span>
-            <strong>{saving ? "Saving" : "Ready"}</strong>
+            <strong>{saving ? "Saving" : dailyRequirementMet ? "Complete" : "In Progress"}</strong>
           </div>
         </div>
       </header>
@@ -795,11 +1117,239 @@ function AthleteWorkspace({
             </div>
           )}
 
+          <div className="athlete-progress-block">
+            <div className="athlete-progress-label">
+              <span>Workout progress</span>
+              <strong>{requiredProgressRatio} required tasks done</strong>
+            </div>
+            <div className="athlete-progress-track" aria-hidden="true">
+              <div
+                className="athlete-progress-fill"
+                style={{
+                  width: `${(Math.min(activityCount, REQUIRED_DAILY_TASK_COUNT) / REQUIRED_DAILY_TASK_COUNT) * 100}%`,
+                }}
+              />
+            </div>
+          </div>
+
+          <section
+            className={`athlete-rings-card ${celebrating ? "celebrating" : ""}`}
+            aria-label="Daily motivation rings"
+          >
+            <div className="athlete-rings-header">
+              <div>
+                <div className="panel-kicker">Daily Momentum</div>
+                <h3 className="section-title athlete-section-title">Close your rings</h3>
+              </div>
+              <span className={`badge ${dailyRequirementMet ? "badge-good" : "badge-neutral"}`}>
+                {dailyRequirementMet ? "Day complete" : "Keep going"}
+              </span>
+            </div>
+
+            <div className="athlete-rings-grid">
+              <div className={`athlete-ring-panel ${targetPercent >= 100 ? "complete" : ""}`}>
+                <div
+                  className={`athlete-ring ${targetPercent >= 100 ? "complete" : ""}`}
+                  style={buildRingStyle(targetPercent, "#22c55e")}
+                  aria-hidden="true"
+                >
+                  <div className="athlete-ring-inner">
+                    <strong>{requiredProgressRatio}</strong>
+                    <span>Target</span>
+                  </div>
+                </div>
+                <div className="athlete-ring-label">5-task goal</div>
+                <div className="athlete-ring-copy">
+                  {remainingTaskCount === 0 ? "Target reached" : `${remainingTaskCount} to go`}
+                </div>
+              </div>
+
+              <div className={`athlete-ring-panel ${mandatoryPercent >= 100 ? "complete" : ""}`}>
+                <div
+                  className={`athlete-ring athlete-ring-gold ${mandatoryPercent >= 100 ? "complete" : ""}`}
+                  style={buildRingStyle(mandatoryPercent, "#f59e0b")}
+                  aria-hidden="true"
+                >
+                  <div className="athlete-ring-inner">
+                    <strong>{mandatoryProgressRatio}</strong>
+                    <span>Required</span>
+                  </div>
+                </div>
+                <div className="athlete-ring-label">Mandatory work</div>
+                <div className="athlete-ring-copy">
+                  {missingMandatory.length === 0 ? "All required done" : missingMandatory.join(", ")}
+                </div>
+              </div>
+
+              <div className={`athlete-ring-panel ${streakPercent >= 100 ? "complete" : ""}`}>
+                <div
+                  className={`athlete-ring athlete-ring-blue ${streakPercent >= 100 ? "complete" : ""}`}
+                  style={buildRingStyle(streakPercent, "#38bdf8")}
+                  aria-hidden="true"
+                >
+                  <div className="athlete-ring-inner">
+                    <strong>{currentStreak}</strong>
+                    <span>Streak</span>
+                  </div>
+                </div>
+                <div className="athlete-ring-label">7-day momentum</div>
+                <div className="athlete-ring-copy">
+                  {currentStreak >= streakGoal
+                    ? "Streak goal reached"
+                    : `${streakGoal - currentStreak} day(s) to 7`}
+                </div>
+              </div>
+            </div>
+
+            <div className={`athlete-momentum-banner ${dailyRequirementMet ? "complete" : ""}`}>
+              <strong>{dailyRequirementMet ? "Nice work." : "Next move."}</strong>
+              <span>{athleteMomentumMessage}</span>
+            </div>
+
+            {celebrating ? (
+              <div className="athlete-celebration-banner" role="status">
+                Day complete. All required work is locked in.
+              </div>
+            ) : null}
+          </section>
+
+          <section className="athlete-accountability-card">
+            <div className="athlete-accountability-header">
+              <div>
+                <div className="panel-kicker">Accountability</div>
+                <h3 className="section-title athlete-section-title">Recent required work</h3>
+              </div>
+              <span className={`badge ${accountabilityAlerts.length === 0 ? "badge-good" : "badge-neutral"}`}>
+                {accountabilityAlerts.length === 0 ? "On track" : `${accountabilityAlerts.length} item(s) to clean up`}
+              </span>
+            </div>
+
+            <div className="athlete-accountability-list">
+              {recentAccountability.map((entry) => {
+                const isComplete = entry.log
+                  ? meetsDailyWorkoutRequirement(entry.log.activities)
+                  : false;
+                const copy = !entry.log
+                  ? "No workout has been logged yet."
+                  : isComplete
+                    ? "All required work is complete."
+                    : dailyRequirementMessage(entry.log.activities);
+
+                return (
+                  <article
+                    key={entry.date}
+                    className={`athlete-accountability-item ${isComplete ? "complete" : "attention"}`}
+                  >
+                    <div className="athlete-accountability-top">
+                      <strong>{entry.label}</strong>
+                      <span>{formatDateLabel(entry.date)}</span>
+                    </div>
+                    <div className="athlete-accountability-copy">{copy}</div>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => setSelectedDate(entry.date)}
+                    >
+                      Open {entry.label}
+                    </button>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="athlete-coach-card">
+            <div className="athlete-coach-header">
+              <div>
+                <div className="panel-kicker">Coach View</div>
+                <h3 className="section-title athlete-section-title">What to do next</h3>
+              </div>
+              <span className={`badge badge-${dailyRequirementMet ? "good" : "info"}`}>
+                {dailyRequirementMet ? "Ready to submit" : "Stay on it"}
+              </span>
+            </div>
+
+            <div className="athlete-coach-copy">{nextActionCopy}</div>
+
+            <div className="athlete-coach-grid">
+              <article className={`athlete-coach-panel reward-${weeklyRewardTone}`}>
+                <div className="athlete-coach-panel-title">{weeklyRewardTitle}</div>
+                <div className="athlete-coach-panel-copy">{weeklyRewardCopy}</div>
+              </article>
+
+              <article className="athlete-coach-panel">
+                <div className="athlete-coach-panel-title">Suggested next tasks</div>
+                <div className="athlete-chip-row">
+                  {topSuggestedActivities.length > 0 ? (
+                    topSuggestedActivities.map((activity) => (
+                      <button
+                        key={activity.key}
+                        type="button"
+                        className={`athlete-suggestion-chip ${
+                          MANDATORY_ACTIVITY_KEYS.includes(activity.key) ? "required" : ""
+                        }`}
+                        onClick={() => setOpenActivityKey(activity.key)}
+                      >
+                        {activity.label}
+                      </button>
+                    ))
+                  ) : (
+                    <span className="badge badge-good">All tasks needed for today are done</span>
+                  )}
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <div className={`athlete-requirement-card ${dailyRequirementMet ? "complete" : ""}`}>
+            <div className="athlete-requirement-header">
+              <strong>Daily target: complete 5 tasks</strong>
+              <span>{selectedActivityRatio} total checked</span>
+            </div>
+            <div className="athlete-requirement-copy">{requirementMessage}</div>
+            <div className="workout-tag-row requirement-tag-row">
+              {MANDATORY_ACTIVITY_KEYS.map((key) => (
+                <span
+                  key={key}
+                  className={`badge ${form.activities[key] ? "badge-good" : "badge-neutral"}`}
+                >
+                  {activityLabel(key)} {form.activities[key] ? "required done" : "required"}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="athlete-template-row">
+            <button
+              type="button"
+              className="secondary-button athlete-template-button"
+              onClick={() =>
+                previousLog ? applyTemplateFromLog(previousLog, "your previous workout") : null
+              }
+              disabled={!previousLog}
+            >
+              {previousLog
+                ? `Use ${formatDateLabel(previousLog.workout_date)} as a starting point`
+                : "No earlier workout to copy"}
+            </button>
+            <button
+              type="button"
+              className="secondary-button athlete-template-button"
+              onClick={() =>
+                selectedLog ? applyTemplateFromLog(selectedLog, "the saved workout") : null
+              }
+              disabled={!selectedLog}
+            >
+              Reload this date
+            </button>
+          </div>
+
           <div className="activity-stack">
             {WORKOUT_ACTIVITIES.map((activity) => {
               const isOpen = openActivityKey === activity.key;
               const hasContent =
                 form.activities[activity.key] || Boolean(form.activityNotes[activity.key].trim());
+              const notePreview = form.activityNotes[activity.key].trim();
 
               return (
                 <article
@@ -834,9 +1384,18 @@ function AthleteWorkspace({
                           onClick={(event) => event.stopPropagation()}
                         />
                         <span className="activity-card-title">{activity.label}</span>
+                        {MANDATORY_ACTIVITY_KEYS.includes(activity.key) ? (
+                          <span className="activity-mandatory-pill">Required</span>
+                        ) : null}
                       </span>
                       <span className="activity-toggle-meta">
-                        {hasContent ? "In progress" : "Tap to open"}
+                        {form.activities[activity.key]
+                          ? "Done"
+                          : MANDATORY_ACTIVITY_KEYS.includes(activity.key)
+                            ? "Required next"
+                            : hasContent
+                              ? "In progress"
+                              : "Tap to open"}
                       </span>
                     </button>
                   </div>
@@ -853,6 +1412,9 @@ function AthleteWorkspace({
                     >
                       {isOpen ? "Hide details" : "What counts?"}
                     </button>
+                    {!isOpen && notePreview ? (
+                      <span className="activity-collapsed-note">{notePreview}</span>
+                    ) : null}
                   </div>
 
                   {isOpen ? (
@@ -982,7 +1544,7 @@ function AthleteWorkspace({
           ) : null}
 
           <button type="submit" className="primary-button athlete-save-button" disabled={saving}>
-            {saving ? "Saving..." : "Save Now"}
+            {saving ? "Saving..." : dailyRequirementMet ? "Submit Complete Day" : "Complete Requirements To Submit"}
           </button>
         </form>
 
@@ -1001,6 +1563,90 @@ function AthleteWorkspace({
             </button>
           </div>
 
+          <div className="athlete-streak-grid">
+            <div className="summary-card summary-card-compact athlete-streak-card">
+              <div className="summary-label">Current Streak</div>
+              <div className="summary-value">{currentStreak}</div>
+            </div>
+            <div className="summary-card summary-card-compact athlete-streak-card">
+              <div className="summary-label">Last Complete Day</div>
+              <div className="summary-value summary-value-small">
+                {lastCompleteDate ? formatDateLabel(lastCompleteDate) : "None yet"}
+              </div>
+            </div>
+          </div>
+
+          <div className="athlete-weekly-scorecard">
+            <article className="summary-card summary-card-compact athlete-streak-card">
+              <div className="summary-label">This Week Complete</div>
+              <div className="summary-value">{weeklyCompletedCount}</div>
+            </article>
+            <article className="summary-card summary-card-compact athlete-streak-card">
+              <div className="summary-label">This Week Logged</div>
+              <div className="summary-value">{weeklyLoggedCount}</div>
+            </article>
+            <article className="summary-card summary-card-compact athlete-streak-card">
+              <div className="summary-label">Best Streak</div>
+              <div className="summary-value">{bestStreak}</div>
+            </article>
+          </div>
+
+          <div className="athlete-calendar-card">
+            <div className="athlete-calendar-header">
+              <button
+                type="button"
+                className="secondary-button athlete-calendar-nav"
+                onClick={() => setCalendarMonth((current) => shiftMonth(current, -1))}
+              >
+                Prev Month
+              </button>
+              <div className="athlete-calendar-title">{formatMonthLabel(calendarMonth)}</div>
+              <button
+                type="button"
+                className="secondary-button athlete-calendar-nav"
+                onClick={() => setCalendarMonth((current) => shiftMonth(current, 1))}
+              >
+                Next Month
+              </button>
+            </div>
+
+            <div className="athlete-calendar-grid">
+              {calendarDays.map((date) => {
+                const entry = personalLogMap.get(date);
+                const tone = !entry
+                  ? "empty"
+                  : meetsDailyWorkoutRequirement(entry.activities)
+                    ? "complete"
+                    : "incomplete";
+
+                return (
+                  <button
+                    key={date}
+                    type="button"
+                    className={`athlete-calendar-day ${selectedDate === date ? "selected" : ""} ${tone}`}
+                    onClick={() => setSelectedDate(date)}
+                  >
+                    <span>{Number(date.slice(-2))}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="athlete-calendar-legend">
+              <span className="legend-item">
+                <span className="legend-dot complete" />
+                Complete
+              </span>
+              <span className="legend-item">
+                <span className="legend-dot incomplete" />
+                Logged
+              </span>
+              <span className="legend-item">
+                <span className="legend-dot empty" />
+                No log
+              </span>
+            </div>
+          </div>
+
           <div className="history-chip-row">
             {personalLogs.slice(0, 8).map((entry) => (
               <button
@@ -1013,6 +1659,14 @@ function AthleteWorkspace({
               </button>
             ))}
           </div>
+
+          <button
+            type="button"
+            className="secondary-button athlete-sheet-button"
+            onClick={() => setHistorySheetOpen(true)}
+          >
+            Open Full History
+          </button>
 
           <div className="log-list athlete-history-list">
             {personalLogs.length === 0 ? (
@@ -1075,7 +1729,7 @@ function AthleteWorkspace({
       <div className="athlete-bottom-bar">
         <div className="athlete-bottom-status">
           <span>{saving ? "Saving..." : "Saved progress"}</span>
-          <strong>{activityCount} checked</strong>
+          <strong>{selectedActivityRatio} complete</strong>
         </div>
         <div className="athlete-bottom-actions">
           <button
@@ -1088,32 +1742,102 @@ function AthleteWorkspace({
           <button
             type="button"
             className="secondary-button athlete-bottom-button"
-            onClick={() => historyRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+            onClick={() => setHistorySheetOpen(true)}
           >
             History
           </button>
           <button
             type="button"
             className="primary-button athlete-bottom-button"
-            onClick={() => void saveCurrentForm()}
+            onClick={() => void saveCurrentForm({ requireComplete: true })}
             disabled={saving}
           >
-            Save
+            {dailyRequirementMet ? "Submit" : "Finish 5"}
           </button>
         </div>
       </div>
+
+      {historySheetOpen ? (
+        <div className="modal-overlay" onClick={() => setHistorySheetOpen(false)}>
+          <div
+            className="modal-card modal-card-wide athlete-history-sheet"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="modal-header">
+              <h3>Workout History</h3>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setHistorySheetOpen(false)}
+              >
+                x
+              </button>
+            </div>
+
+            <input
+              className="input"
+              value={historySearch}
+              onChange={(event) => setHistorySearch(event.target.value)}
+              placeholder="Search dates or notes"
+            />
+
+            <div className="log-list athlete-history-sheet-list">
+              {filteredHistoryLogs.length === 0 ? (
+                <div className="empty-text">No saved workouts match that search.</div>
+              ) : (
+                filteredHistoryLogs.map((entry) => {
+                  const completedActivities = Object.entries(entry.activities)
+                    .filter(([, checked]) => checked)
+                    .map(([key]) => activityLabel(key as WorkoutActivityKey));
+
+                  return (
+                    <article key={entry.id} className="workout-log-card athlete-history-entry">
+                      <div className="workout-log-header">
+                        <strong>{formatDateLabel(entry.workout_date)}</strong>
+                        <span>{completedActivities.length} activities</span>
+                      </div>
+                      <div className="workout-tag-row">
+                        {completedActivities.map((label) => (
+                          <span key={`${entry.id}-${label}`} className="badge badge-info">
+                            {label}
+                          </span>
+                        ))}
+                      </div>
+                      {entry.notes ? (
+                        <div className="workout-log-copy history-sheet-copy">{entry.notes}</div>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => {
+                          setSelectedDate(entry.workout_date);
+                          setHistorySheetOpen(false);
+                        }}
+                      >
+                        Open This Date
+                      </button>
+                    </article>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
 
 function AdminWorkoutOverview({
   logs,
+  athletePlayers,
   source,
   loading,
   error,
   onRefresh,
 }: {
   logs: WorkoutLog[];
+  athletePlayers: AthletePlayerOption[];
   source: WorkoutDataSource;
   loading: boolean;
   error: string;
@@ -1121,27 +1845,89 @@ function AdminWorkoutOverview({
 }) {
   const [view, setView] = useState<SummaryView>("daily");
   const [search, setSearch] = useState("");
+  const [completionFilter, setCompletionFilter] = useState<CompletionFilter>("all");
+  const [teamFilter, setTeamFilter] = useState<string>("all");
+  const [athleteFilter, setAthleteFilter] = useState<string>("all");
+  const [dateFilter, setDateFilter] = useState("");
+
+  const teamOptions = useMemo(
+    () => ["all", ...new Set(logs.map((entry) => entry.team_name))],
+    [logs]
+  );
+
+  const athleteOptions = useMemo(() => {
+    const relevantLogs =
+      teamFilter === "all"
+        ? logs
+        : logs.filter((entry) => entry.team_name === teamFilter);
+
+    return [
+      "all",
+      ...new Set(
+        relevantLogs
+          .map((entry) => entry.athlete_name)
+          .sort((a, b) => a.localeCompare(b))
+      ),
+    ];
+  }, [logs, teamFilter]);
 
   const filteredLogs = useMemo(() => {
     const term = search.trim().toLowerCase();
-    if (!term) return logs;
 
-    return logs.filter((entry) =>
-      [
+    return logs.filter((entry) => {
+      if (completionFilter === "complete" && !meetsDailyWorkoutRequirement(entry.activities)) {
+        return false;
+      }
+
+      if (completionFilter === "incomplete" && meetsDailyWorkoutRequirement(entry.activities)) {
+        return false;
+      }
+
+      if (teamFilter !== "all" && entry.team_name !== teamFilter) {
+        return false;
+      }
+
+      if (athleteFilter !== "all" && entry.athlete_name !== athleteFilter) {
+        return false;
+      }
+
+      if (dateFilter && entry.workout_date !== dateFilter) {
+        return false;
+      }
+
+      if (!term) return true;
+
+      return [
         entry.athlete_name,
         entry.team_name,
         entry.workout_date,
         entry.notes,
         entry.focus_area,
         entry.advanced_notes,
+        completionLabel(entry.activities),
+        dailyRequirementMessage(entry.activities),
         ...Object.values(entry.activity_notes),
       ]
         .filter(Boolean)
         .join(" ")
         .toLowerCase()
-        .includes(term)
-    );
-  }, [logs, search]);
+        .includes(term);
+    });
+  }, [logs, search, completionFilter, teamFilter, athleteFilter, dateFilter]);
+
+  const completeCount = useMemo(
+    () => filteredLogs.filter((entry) => meetsDailyWorkoutRequirement(entry.activities)).length,
+    [filteredLogs]
+  );
+
+  const incompleteLogs = useMemo(
+    () => filteredLogs.filter((entry) => !meetsDailyWorkoutRequirement(entry.activities)),
+    [filteredLogs]
+  );
+
+  const incompleteCount = incompleteLogs.length;
+  const completionRate =
+    filteredLogs.length === 0 ? 0 : Math.round((completeCount / filteredLogs.length) * 100);
 
   const totalCompletions = useMemo(
     () =>
@@ -1151,6 +1937,75 @@ function AdminWorkoutOverview({
       ),
     [filteredLogs]
   );
+
+  const exceptionRows = useMemo(
+    () =>
+      incompleteLogs.map((entry) => ({
+        id: entry.id,
+        athlete: entry.athlete_name,
+        team: entry.team_name,
+        date: entry.workout_date,
+        detail: dailyRequirementMessage(entry.activities),
+      })),
+    [incompleteLogs]
+  );
+  const focusDate = dateFilter || todayIsoDate();
+  const focusDateLogs = useMemo(
+    () => logs.filter((entry) => entry.workout_date === focusDate),
+    [logs, focusDate]
+  );
+  const notLoggedToday = useMemo(() => {
+    const relevantPlayers =
+      teamFilter === "all"
+        ? athletePlayers
+        : athletePlayers.filter((player) => player.teamName === teamFilter);
+
+    const loggedSet = new Set(
+      focusDateLogs.map(
+        (entry) => `${entry.team_name}::${entry.athlete_name.trim().toLowerCase()}`
+      )
+    );
+
+    return relevantPlayers.filter(
+      (player) => !loggedSet.has(`${player.teamName}::${player.fullName.trim().toLowerCase()}`)
+    );
+  }, [athletePlayers, focusDateLogs, teamFilter]);
+  const teamCompletionRows = useMemo(() => {
+    const relevantPlayers =
+      teamFilter === "all"
+        ? athletePlayers
+        : athletePlayers.filter((player) => player.teamName === teamFilter);
+    const teamMap = new Map<
+      TeamName,
+      { rosterCount: number; loggedCount: number; completeCount: number }
+    >();
+
+    relevantPlayers.forEach((player) => {
+      const group =
+        teamMap.get(player.teamName) ??
+        { rosterCount: 0, loggedCount: 0, completeCount: 0 };
+      group.rosterCount += 1;
+      teamMap.set(player.teamName, group);
+    });
+
+    focusDateLogs.forEach((entry) => {
+      const group =
+        teamMap.get(entry.team_name) ??
+        { rosterCount: 0, loggedCount: 0, completeCount: 0 };
+      group.loggedCount += 1;
+      if (meetsDailyWorkoutRequirement(entry.activities)) {
+        group.completeCount += 1;
+      }
+      teamMap.set(entry.team_name, group);
+    });
+
+    return [...teamMap.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([team, data]) => ({
+        team,
+        ...data,
+      }));
+  }, [athletePlayers, focusDateLogs, teamFilter]);
 
   const dailyRows = useMemo(() => {
     const groups = new Map<
@@ -1260,16 +2115,33 @@ function AdminWorkoutOverview({
           <div className="summary-value">{filteredLogs.length}</div>
         </div>
         <div className="summary-card">
+          <div className="summary-label">Completed Days</div>
+          <div className="summary-value">{completeCount}</div>
+        </div>
+        <div className="summary-card">
+          <div className="summary-label">Incomplete Days</div>
+          <div className="summary-value">{incompleteCount}</div>
+        </div>
+        <div className="summary-card">
+          <div className="summary-label">Completion Rate</div>
+          <div className="summary-value summary-value-small">
+            {filteredLogs.length === 0 ? "0%" : `${completionRate}%`}
+          </div>
+        </div>
+      </div>
+
+      <div className="summary-row admin-summary-row-compact">
+        <div className="summary-card summary-card-compact">
           <div className="summary-label">Athletes Logged</div>
           <div className="summary-value">
             {new Set(filteredLogs.map((entry) => entry.athlete_name.toLowerCase())).size}
           </div>
         </div>
-        <div className="summary-card">
+        <div className="summary-card summary-card-compact">
           <div className="summary-label">Activity Checks</div>
           <div className="summary-value">{totalCompletions}</div>
         </div>
-        <div className="summary-card">
+        <div className="summary-card summary-card-compact">
           <div className="summary-label">Storage</div>
           <div className="summary-value summary-value-small">
             {source === "supabase" ? "Supabase" : "Local fallback"}
@@ -1308,7 +2180,161 @@ function AdminWorkoutOverview({
             <option value="weekly">Weekly Overview</option>
             <option value="athlete">Person Overview</option>
           </select>
+          <select
+            className="select group-select"
+            value={completionFilter}
+            onChange={(event) => setCompletionFilter(event.target.value as CompletionFilter)}
+          >
+            <option value="all">All Statuses</option>
+            <option value="complete">Completed Only</option>
+            <option value="incomplete">Incomplete Only</option>
+          </select>
+          <select
+            className="select group-select"
+            value={teamFilter}
+            onChange={(event) => setTeamFilter(event.target.value)}
+          >
+            <option value="all">All Teams</option>
+            {teamOptions
+              .filter((team) => team !== "all")
+              .map((team) => (
+                <option key={team} value={team}>
+                  {team}
+                </option>
+              ))}
+          </select>
+          <select
+            className="select group-select"
+            value={athleteFilter}
+            onChange={(event) => setAthleteFilter(event.target.value)}
+          >
+            <option value="all">All Athletes</option>
+            {athleteOptions
+              .filter((athlete) => athlete !== "all")
+              .map((athlete) => (
+                <option key={athlete} value={athlete}>
+                  {athlete}
+                </option>
+              ))}
+          </select>
+          <input
+            className="input admin-date-filter"
+            type="date"
+            value={dateFilter}
+            onChange={(event) => setDateFilter(event.target.value)}
+          />
         </div>
+
+        <div className="admin-quick-actions">
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => {
+              setDateFilter(todayIsoDate());
+              setCompletionFilter("incomplete");
+              setView("daily");
+            }}
+          >
+            Show Incomplete Today
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => {
+              setDateFilter(todayIsoDate());
+              setCompletionFilter("complete");
+              setView("daily");
+            }}
+          >
+            Show Completed Today
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => {
+              setDateFilter(todayIsoDate());
+              setCompletionFilter("all");
+              setView("daily");
+            }}
+          >
+            Show Today&apos;s Logs
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => {
+              setDateFilter("");
+              setCompletionFilter("all");
+              setTeamFilter("all");
+              setAthleteFilter("all");
+              setView("athlete");
+            }}
+          >
+            Reset Filters
+          </button>
+        </div>
+
+        <div className="admin-team-grid">
+          {teamCompletionRows.map((row) => (
+            <article key={row.team} className="team-stat-card admin-team-card">
+              <div className="team-stat-title">{row.team}</div>
+              <div className="team-stat-line">Roster: {row.rosterCount}</div>
+              <div className="team-stat-line">Logged {formatDateLabel(focusDate)}: {row.loggedCount}</div>
+              <div className="team-stat-line">Completed: {row.completeCount}</div>
+            </article>
+          ))}
+        </div>
+
+        <div className="admin-not-logged-card">
+          <div className="panel-kicker">Accountability</div>
+          <h3 className="section-title admin-subsection-title">
+            Not logged for {formatDateLabel(focusDate)}
+          </h3>
+          <div className="admin-not-logged-list">
+            {notLoggedToday.length === 0 ? (
+              <div className="status-banner success">
+                Everyone in the current team filter has logged for {formatDateLabel(focusDate)}.
+              </div>
+            ) : (
+              notLoggedToday.slice(0, 12).map((player) => (
+                <article
+                  key={`${player.teamName}-${player.fullName}`}
+                  className="admin-exception-row"
+                >
+                  <div className="admin-exception-title">
+                    <strong>{player.fullName}</strong>
+                    <span>{player.teamName}</span>
+                  </div>
+                  <div className="overview-card-copy">No workout log found for this date.</div>
+                </article>
+              ))
+            )}
+          </div>
+        </div>
+
+        {exceptionRows.length > 0 ? (
+          <div className="admin-exception-card">
+            <div className="panel-kicker">Exception List</div>
+            <h3 className="section-title admin-subsection-title">Needs follow-up</h3>
+            <div className="admin-exception-list">
+              {exceptionRows.slice(0, 6).map((row) => (
+                <article key={row.id} className="admin-exception-row">
+                  <div className="admin-exception-title">
+                    <strong>{row.athlete}</strong>
+                    <span>
+                      {row.team} - {formatDateLabel(row.date)}
+                    </span>
+                  </div>
+                  <div className="overview-card-copy">{row.detail}</div>
+                </article>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="status-banner success">
+            No exceptions in the current filter set. Every visible workout meets the daily requirement.
+          </div>
+        )}
 
         {error ? <div className="status-banner error">{error}</div> : null}
         {loading ? <div className="empty-text">Loading workout data...</div> : null}
@@ -1352,6 +2378,17 @@ function AdminWorkoutOverview({
                       </div>
                       <div className="workout-log-copy">{entry.team_name}</div>
                       <div className="workout-tag-row">
+                        <span
+                          className={`badge ${
+                            meetsDailyWorkoutRequirement(entry.activities)
+                              ? "badge-good"
+                              : "badge-neutral"
+                          }`}
+                        >
+                          {completionLabel(entry.activities)}
+                        </span>
+                      </div>
+                      <div className="workout-tag-row">
                         {labels.length === 0 ? (
                           <span className="badge badge-neutral">No activities checked</span>
                         ) : (
@@ -1363,6 +2400,11 @@ function AdminWorkoutOverview({
                         )}
                       </div>
                       {entry.notes ? <div className="workout-log-copy">{entry.notes}</div> : null}
+                      {!meetsDailyWorkoutRequirement(entry.activities) ? (
+                        <div className="status-banner warn admin-inline-warning">
+                          {dailyRequirementMessage(entry.activities)}
+                        </div>
+                      ) : null}
                       {activityNotes.length > 0 ? (
                         <div className="activity-note-list">
                           {activityNotes.map((item) => (
@@ -1531,6 +2573,7 @@ export default function App() {
         {adminView === "workouts" ? (
           <AdminWorkoutOverview
             logs={logs}
+            athletePlayers={athletePlayers}
             source={source}
             loading={loading}
             error={error}
