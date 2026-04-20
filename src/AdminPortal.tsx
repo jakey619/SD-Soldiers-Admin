@@ -126,9 +126,15 @@ type TeamStats = {
   count: number;
 };
 
-const APP_VERSION = "2.1.0";
+const APP_VERSION = "2.2.0";
 
 const VERSION_HISTORY = [
+  {
+    version: "2.2.0",
+    date: "April 20, 2026",
+    notes:
+      "Optimized the athlete experience for phones with compact navigation, faster date switching, collapsible workout cards, and a sticky mobile action bar.",
+  },
   {
     version: "2.1.0",
     date: "April 20, 2026",

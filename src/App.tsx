@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import AdminPortal from "./AdminPortal";
 import soldiersLogo from "./assets/soldiers-logo.png";
 import "./app.css";
+import { supabase } from "./lib/supabase";
 import {
   fetchWorkoutLogs,
   saveWorkoutLog,
@@ -50,7 +51,13 @@ type WorkoutActivityDefinition = {
   description: string;
 };
 
-const APP_VERSION = "2.1.0";
+type AthletePlayerOption = {
+  id: string;
+  fullName: string;
+  teamName: TeamName;
+};
+
+const APP_VERSION = "2.2.0";
 
 const TEAM_NAMES: TeamName[] = [
   "15u Salute",
@@ -164,6 +171,13 @@ function formatDateLabel(dateString: string) {
     day: "numeric",
     year: "numeric",
   });
+}
+
+function shiftIsoDate(dateString: string, dayOffset: number) {
+  const date = new Date(`${dateString}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return todayIsoDate();
+  date.setDate(date.getDate() + dayOffset);
+  return date.toISOString().slice(0, 10);
 }
 
 function createWorkoutForm(): WorkoutForm {
@@ -343,8 +357,70 @@ function useWorkoutLogs() {
   };
 }
 
+function useAthletePlayers() {
+  const [players, setPlayers] = useState<AthletePlayerOption[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadPlayers() {
+      setLoading(true);
+      setError("");
+
+      const { data, error: loadError } = await supabase
+        .from("players")
+        .select("id, first_name, last_name, suggested_team")
+        .order("last_name", { ascending: true })
+        .order("first_name", { ascending: true });
+
+      if (!isMounted) return;
+
+      if (loadError) {
+        setPlayers([]);
+        setError(loadError.message);
+        setLoading(false);
+        return;
+      }
+
+      const nextPlayers = (data ?? [])
+        .map((player) => {
+          const firstName = String(player.first_name ?? "").trim();
+          const lastName = String(player.last_name ?? "").trim();
+          const fullName = [firstName, lastName].filter(Boolean).join(" ").trim();
+
+          if (!fullName) {
+            return null;
+          }
+
+          return {
+            id: String(player.id),
+            fullName,
+            teamName: ((player.suggested_team as TeamName | null) ?? "Undecided") as TeamName,
+          };
+        })
+        .filter((player): player is AthletePlayerOption => Boolean(player));
+
+      setPlayers(nextPlayers);
+      setLoading(false);
+    }
+
+    void loadPlayers();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  return { players, loading, error };
+}
+
 function HomeScreen({
   athleteForm,
+  athletePlayers,
+  athletePlayersLoading,
+  athletePlayersError,
   adminPassword,
   onAthleteFormChange,
   onAthleteEnter,
@@ -353,6 +429,9 @@ function HomeScreen({
   message,
 }: {
   athleteForm: AthleteForm;
+  athletePlayers: AthletePlayerOption[];
+  athletePlayersLoading: boolean;
+  athletePlayersError: string;
   adminPassword: string;
   onAthleteFormChange: (next: AthleteForm) => void;
   onAthleteEnter: () => void;
@@ -360,6 +439,10 @@ function HomeScreen({
   onAdminEnter: () => void;
   message: string;
 }) {
+  const teamPlayers = athletePlayers.filter(
+    (player) => player.teamName === athleteForm.teamName
+  );
+
   return (
     <div className="app-shell app-shell-auth">
       <header className="top-bar auth-top-bar">
@@ -401,9 +484,9 @@ function HomeScreen({
             <label className="field-label" htmlFor="athlete-name">
               Athlete Name
             </label>
-            <input
+            <select
               id="athlete-name"
-              className="input"
+              className="select"
               value={athleteForm.athleteName}
               onChange={(event) =>
                 onAthleteFormChange({
@@ -411,8 +494,24 @@ function HomeScreen({
                   athleteName: event.target.value,
                 })
               }
-              placeholder="Enter your name"
-            />
+              disabled={athletePlayersLoading || teamPlayers.length === 0}
+            >
+              <option value="">
+                {athletePlayersLoading
+                  ? "Loading player names..."
+                  : teamPlayers.length === 0
+                    ? "No players found for this team"
+                    : "Select your name"}
+              </option>
+              {teamPlayers.map((player) => (
+                <option key={player.id} value={player.fullName}>
+                  {player.fullName}
+                </option>
+              ))}
+            </select>
+            {athletePlayersError ? (
+              <div className="status-banner error">{athletePlayersError}</div>
+            ) : null}
 
             <label className="field-label" htmlFor="athlete-team">
               Team Name
@@ -477,13 +576,11 @@ function HomeScreen({
 function AthleteWorkspace({
   identity,
   logs,
-  source,
   onBack,
   onSubmit,
 }: {
   identity: AthleteIdentity;
   logs: WorkoutLog[];
-  source: WorkoutDataSource;
   onBack: () => void;
   onSubmit: (form: WorkoutForm) => Promise<void>;
 }) {
@@ -494,8 +591,12 @@ function AthleteWorkspace({
   }));
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
+  const [openActivityKey, setOpenActivityKey] = useState<WorkoutActivityKey | null>("pushups");
+  const [historyExpanded, setHistoryExpanded] = useState(false);
+  const [advancedExpanded, setAdvancedExpanded] = useState(false);
   const skipAutosaveRef = useRef(true);
   const lastSavedSnapshotRef = useRef("");
+  const historyRef = useRef<HTMLElement | null>(null);
 
   const personalLogs = useMemo(
     () =>
@@ -507,9 +608,10 @@ function AthleteWorkspace({
     [identity.athleteName, identity.teamName, logs]
   );
 
-  const latestLog = personalLogs[0] ?? null;
   const selectedLog =
     personalLogs.find((entry) => entry.workout_date === selectedDate) ?? null;
+  const activityCount = countCompletedActivities(form.activities);
+  const historyPreview = personalLogs.slice(0, historyExpanded ? 20 : 4);
 
   useEffect(() => {
     const savedLog =
@@ -532,6 +634,18 @@ function AthleteWorkspace({
 
     skipAutosaveRef.current = true;
     setForm(nextForm);
+    setOpenActivityKey((current) => {
+      if (current && (savedLog?.activities[current] || nextForm.activityNotes[current])) {
+        return current;
+      }
+
+      const firstCompleted = WORKOUT_ACTIVITIES.find(
+        (activity) =>
+          nextForm.activities[activity.key] || nextForm.activityNotes[activity.key].trim()
+      );
+
+      return firstCompleted?.key ?? "pushups";
+    });
   }, [identity, personalLogs, selectedDate]);
 
   async function saveCurrentForm() {
@@ -593,68 +707,83 @@ function AthleteWorkspace({
   }, [form, identity, onSubmit]);
 
   return (
-    <div className="app-shell">
-      <header className="top-bar">
-        <div className="brand">
-          <img src={soldiersLogo} alt="San Diego Soldiers logo" className="brand-logo" />
-          <div className="brand-text">
-            <div className="brand-title">Athlete Workout Log</div>
-            <div className="brand-subtitle">
+    <div className="app-shell athlete-shell">
+      <header className="athlete-topbar">
+        <div className="athlete-topbar-main">
+          <div className="athlete-title-block">
+            <div className="panel-kicker">Athlete Mode</div>
+            <div className="athlete-title">Workout Journal</div>
+            <div className="athlete-subtitle">
               {identity.athleteName} - {identity.teamName}
             </div>
           </div>
-        </div>
-        <div className="status-area">
-          <div className="app-status">
-            Saving to {source === "supabase" ? "Supabase" : "this device"}
-          </div>
-          <button type="button" className="secondary-button" onClick={onBack}>
+          <button type="button" className="secondary-button athlete-switch-button" onClick={onBack}>
             Switch User
           </button>
         </div>
+
+        <div className="athlete-status-strip">
+          <div className="athlete-status-item">
+            <span>Date</span>
+            <strong>{formatDateLabel(selectedDate)}</strong>
+          </div>
+          <div className="athlete-status-item">
+            <span>Checked</span>
+            <strong>{activityCount}</strong>
+          </div>
+          <div className="athlete-status-item">
+            <span>Status</span>
+            <strong>{saving ? "Saving" : "Ready"}</strong>
+          </div>
+        </div>
       </header>
 
-      <div className="summary-row athlete-summary-row">
-        <div className="summary-card">
-          <div className="summary-label">My Logs</div>
-          <div className="summary-value">{personalLogs.length}</div>
-        </div>
-        <div className="summary-card">
-          <div className="summary-label">Selected Date</div>
-          <div className="summary-value summary-value-small">
-            {formatDateLabel(selectedDate)}
-          </div>
-        </div>
-        <div className="summary-card">
-          <div className="summary-label">Selected Activities</div>
-          <div className="summary-value">{countCompletedActivities(form.activities)}</div>
-        </div>
-        <div className="summary-card">
-          <div className="summary-label">Last Saved Workout</div>
-          <div className="summary-value summary-value-small">
-            {latestLog ? formatDateLabel(latestLog.workout_date) : "None yet"}
-          </div>
-        </div>
-      </div>
-
-      <div className="athlete-layout">
-        <form className="card" onSubmit={handleSubmit}>
-          <div className="panel-kicker">Daily Entry</div>
-          <h2 className="section-title">Workout journal by date</h2>
-          <div className="auth-help-text">
-            Changes save automatically as you go. Switch the date to review or update an older workout.
+      <div className="athlete-single-column">
+        <form className="card athlete-form-card" onSubmit={handleSubmit}>
+          <div className="athlete-date-toolbar">
+            <div>
+              <div className="panel-kicker">Quick Date</div>
+              <h2 className="section-title athlete-section-title">Workout journal by date</h2>
+            </div>
+            <input
+              id="workout-date"
+              className="input athlete-date-input"
+              type="date"
+              value={selectedDate}
+              onChange={(event) => setSelectedDate(event.target.value)}
+            />
           </div>
 
-          <label className="field-label" htmlFor="workout-date">
-            Date
-          </label>
-          <input
-            id="workout-date"
-            className="input"
-            type="date"
-            value={selectedDate}
-            onChange={(event) => setSelectedDate(event.target.value)}
-          />
+          <div className="athlete-date-shortcuts">
+            <button
+              type="button"
+              className="secondary-button athlete-shortcut-button"
+              onClick={() => setSelectedDate(todayIsoDate())}
+            >
+              Today
+            </button>
+            <button
+              type="button"
+              className="secondary-button athlete-shortcut-button"
+              onClick={() => setSelectedDate(shiftIsoDate(selectedDate, -1))}
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              className="secondary-button athlete-shortcut-button"
+              onClick={() => setSelectedDate(shiftIsoDate(selectedDate, 1))}
+            >
+              Next
+            </button>
+            <button
+              type="button"
+              className="secondary-button athlete-shortcut-button"
+              onClick={() => setSelectedDate(shiftIsoDate(todayIsoDate(), -1))}
+            >
+              Yesterday
+            </button>
+          </div>
 
           {selectedLog ? (
             <div className="status-banner info">
@@ -666,59 +795,103 @@ function AthleteWorkspace({
             </div>
           )}
 
-          <div className="activity-grid">
-            {WORKOUT_ACTIVITIES.map((activity) => (
-              <div key={activity.key} className="activity-card">
-                <div className="activity-card-top">
-                  <label className="activity-checkbox-row">
-                    <input
-                      type="checkbox"
-                      checked={form.activities[activity.key]}
-                      onChange={(event) =>
-                        setForm((current) => ({
-                          ...current,
-                          activities: {
-                            ...current.activities,
-                            [activity.key]: event.target.checked,
-                          },
-                        }))
-                      }
-                    />
-                    <span className="activity-card-title">{activity.label}</span>
-                  </label>
-                </div>
-                <p className="activity-card-copy">{activity.description}</p>
-                <label
-                  className="activity-note-label"
-                  htmlFor={`activity-note-${activity.key}`}
+          <div className="activity-stack">
+            {WORKOUT_ACTIVITIES.map((activity) => {
+              const isOpen = openActivityKey === activity.key;
+              const hasContent =
+                form.activities[activity.key] || Boolean(form.activityNotes[activity.key].trim());
+
+              return (
+                <article
+                  key={activity.key}
+                  className={`activity-card activity-card-accordion ${isOpen ? "open" : ""} ${
+                    hasContent ? "selected" : ""
+                  }`}
                 >
-                  Notes for {activity.label}
-                </label>
-                <textarea
-                  id={`activity-note-${activity.key}`}
-                  className="textarea activity-note-textarea"
-                  value={form.activityNotes[activity.key]}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      activityNotes: {
-                        ...current.activityNotes,
-                        [activity.key]: event.target.value,
-                      },
-                    }))
-                  }
-                  placeholder={`Add ${activity.label.toLowerCase()} details, reps, time, or reminders`}
-                />
-              </div>
-            ))}
+                  <div className="activity-card-top">
+                    <button
+                      type="button"
+                      className="activity-toggle-button"
+                      onClick={() =>
+                        setOpenActivityKey((current) =>
+                          current === activity.key ? null : activity.key
+                        )
+                      }
+                    >
+                      <span className="activity-toggle-main">
+                        <input
+                          type="checkbox"
+                          checked={form.activities[activity.key]}
+                          onChange={(event) =>
+                            setForm((current) => ({
+                              ...current,
+                              activities: {
+                                ...current.activities,
+                                [activity.key]: event.target.checked,
+                              },
+                            }))
+                          }
+                          onClick={(event) => event.stopPropagation()}
+                        />
+                        <span className="activity-card-title">{activity.label}</span>
+                      </span>
+                      <span className="activity-toggle-meta">
+                        {hasContent ? "In progress" : "Tap to open"}
+                      </span>
+                    </button>
+                  </div>
+
+                  <div className="activity-meta-row">
+                    <button
+                      type="button"
+                      className="activity-inline-link"
+                      onClick={() =>
+                        setOpenActivityKey((current) =>
+                          current === activity.key ? null : activity.key
+                        )
+                      }
+                    >
+                      {isOpen ? "Hide details" : "What counts?"}
+                    </button>
+                  </div>
+
+                  {isOpen ? (
+                    <div className="activity-card-body">
+                      <p className="activity-card-copy">{activity.description}</p>
+                      <label
+                        className="activity-note-label"
+                        htmlFor={`activity-note-${activity.key}`}
+                      >
+                        Notes for {activity.label}
+                      </label>
+                      <textarea
+                        id={`activity-note-${activity.key}`}
+                        className="textarea activity-note-textarea"
+                        value={form.activityNotes[activity.key]}
+                        onChange={(event) =>
+                          setForm((current) => ({
+                            ...current,
+                            activityNotes: {
+                              ...current.activityNotes,
+                              [activity.key]: event.target.value,
+                            },
+                          }))
+                        }
+                        placeholder={`Add ${activity.label.toLowerCase()} details, reps, time, or reminders`}
+                      />
+                    </div>
+                  ) : null}
+                </article>
+              );
+            })}
           </div>
 
           <label className="field-label" htmlFor="workout-notes">
-            Notes
+            Daily Notes
           </label>
           <textarea
             id="workout-notes"
-            className="textarea"
+            className="textarea athlete-main-notes"
             value={form.notes}
             onChange={(event) =>
               setForm((current) => ({ ...current, notes: event.target.value }))
@@ -726,7 +899,13 @@ function AthleteWorkspace({
             placeholder="What did you work on today?"
           />
 
-          <details className="advanced-details">
+          <details
+            className="advanced-details"
+            open={advancedExpanded}
+            onToggle={(event) =>
+              setAdvancedExpanded((event.currentTarget as HTMLDetailsElement).open)
+            }
+          >
             <summary>Advanced Section</summary>
             <div className="advanced-grid">
               <div>
@@ -802,19 +981,44 @@ function AthleteWorkspace({
             <div className={`status-banner ${statusTone(status)}`}>{status}</div>
           ) : null}
 
-          <button type="submit" className="primary-button" disabled={saving}>
+          <button type="submit" className="primary-button athlete-save-button" disabled={saving}>
             {saving ? "Saving..." : "Save Now"}
           </button>
         </form>
 
-        <section className="card">
-          <div className="panel-kicker">Workout History</div>
-          <h2 className="section-title">My saved dates and notes</h2>
-          <div className="log-list">
+        <section ref={historyRef} className="card athlete-history-card">
+          <div className="athlete-history-header">
+            <div>
+              <div className="panel-kicker">Workout History</div>
+              <h2 className="section-title athlete-section-title">Saved dates</h2>
+            </div>
+            <button
+              type="button"
+              className="secondary-button athlete-history-toggle"
+              onClick={() => setHistoryExpanded((current) => !current)}
+            >
+              {historyExpanded ? "Show Less" : "Show More"}
+            </button>
+          </div>
+
+          <div className="history-chip-row">
+            {personalLogs.slice(0, 8).map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                className={`filter-chip ${selectedDate === entry.workout_date ? "active" : ""}`}
+                onClick={() => setSelectedDate(entry.workout_date)}
+              >
+                {formatDateLabel(entry.workout_date)}
+              </button>
+            ))}
+          </div>
+
+          <div className="log-list athlete-history-list">
             {personalLogs.length === 0 ? (
               <div className="empty-text">No workouts logged yet.</div>
             ) : (
-              personalLogs.slice(0, 8).map((entry) => {
+              historyPreview.map((entry) => {
                 const completedActivities = Object.entries(entry.activities)
                   .filter(([, checked]) => checked)
                   .map(([key]) => activityLabel(key as WorkoutActivityKey));
@@ -824,7 +1028,7 @@ function AthleteWorkspace({
                 );
 
                 return (
-                  <article key={entry.id} className="workout-log-card">
+                  <article key={entry.id} className="workout-log-card athlete-history-entry">
                     <div className="workout-log-header">
                       <strong>{formatDateLabel(entry.workout_date)}</strong>
                       <span>{completedActivities.length} activities</span>
@@ -866,6 +1070,37 @@ function AthleteWorkspace({
             )}
           </div>
         </section>
+      </div>
+
+      <div className="athlete-bottom-bar">
+        <div className="athlete-bottom-status">
+          <span>{saving ? "Saving..." : "Saved progress"}</span>
+          <strong>{activityCount} checked</strong>
+        </div>
+        <div className="athlete-bottom-actions">
+          <button
+            type="button"
+            className="secondary-button athlete-bottom-button"
+            onClick={() => setSelectedDate(todayIsoDate())}
+          >
+            Today
+          </button>
+          <button
+            type="button"
+            className="secondary-button athlete-bottom-button"
+            onClick={() => historyRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+          >
+            History
+          </button>
+          <button
+            type="button"
+            className="primary-button athlete-bottom-button"
+            onClick={() => void saveCurrentForm()}
+            disabled={saving}
+          >
+            Save
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1164,6 +1399,35 @@ export default function App() {
   const [homeMessage, setHomeMessage] = useState("");
 
   const { logs, source, loading, error, reload, saveLog } = useWorkoutLogs();
+  const {
+    players: athletePlayers,
+    loading: athletePlayersLoading,
+    error: athletePlayersError,
+  } = useAthletePlayers();
+
+  useEffect(() => {
+    if (athletePlayersLoading) return;
+
+    const matchingPlayers = athletePlayers.filter(
+      (player) => player.teamName === athleteForm.teamName
+    );
+
+    const stillValid = matchingPlayers.some(
+      (player) => player.fullName === athleteForm.athleteName
+    );
+
+    if (!stillValid && athleteForm.athleteName) {
+      setAthleteForm((current) => ({
+        ...current,
+        athleteName: "",
+      }));
+    }
+  }, [
+    athleteForm.athleteName,
+    athleteForm.teamName,
+    athletePlayers,
+    athletePlayersLoading,
+  ]);
 
   async function handleAthleteSubmit(form: WorkoutForm) {
     if (!activeAthlete) return;
@@ -1206,6 +1470,9 @@ export default function App() {
     return (
       <HomeScreen
         athleteForm={athleteForm}
+        athletePlayers={athletePlayers}
+        athletePlayersLoading={athletePlayersLoading}
+        athletePlayersError={athletePlayersError}
         adminPassword={adminPassword}
         onAthleteFormChange={setAthleteForm}
         onAthleteEnter={enterAthleteArea}
@@ -1221,7 +1488,6 @@ export default function App() {
       <AthleteWorkspace
         identity={activeAthlete}
         logs={logs}
-        source={source}
         onBack={returnHome}
         onSubmit={handleAthleteSubmit}
       />
