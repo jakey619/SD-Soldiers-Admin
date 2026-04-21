@@ -644,6 +644,27 @@ function HomeScreen({
           >
             <div className="panel-kicker">Athlete Login</div>
             <h2 className="section-title">Daily workout check-in</h2>
+            <label className="field-label" htmlFor="athlete-team">
+              Team Name
+            </label>
+            <select
+              id="athlete-team"
+              className="select"
+              value={athleteForm.teamName}
+              onChange={(event) =>
+                onAthleteFormChange({
+                  ...athleteForm,
+                  teamName: event.target.value as TeamName,
+                })
+              }
+            >
+              {TEAM_NAMES.map((team) => (
+                <option key={team} value={team}>
+                  {team}
+                </option>
+              ))}
+            </select>
+
             <label className="field-label" htmlFor="athlete-name">
               Athlete Name
             </label>
@@ -675,27 +696,6 @@ function HomeScreen({
             {athletePlayersError ? (
               <div className="status-banner error">{athletePlayersError}</div>
             ) : null}
-
-            <label className="field-label" htmlFor="athlete-team">
-              Team Name
-            </label>
-            <select
-              id="athlete-team"
-              className="select"
-              value={athleteForm.teamName}
-              onChange={(event) =>
-                onAthleteFormChange({
-                  ...athleteForm,
-                  teamName: event.target.value as TeamName,
-                })
-              }
-            >
-              {TEAM_NAMES.map((team) => (
-                <option key={team} value={team}>
-                  {team}
-                </option>
-              ))}
-            </select>
 
             <button type="submit" className="primary-button">
               Enter Athlete Area

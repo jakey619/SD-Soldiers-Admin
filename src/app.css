@@ -3024,17 +3024,7 @@ textarea {
 
 @media (min-width: 1024px) {
   .auth-hero-card {
-    justify-items: center;
-  }
-
-  .auth-hero-media {
-    width: min(100%, 720px);
-    min-height: 120px;
-  }
-
-  .auth-hero-image {
-    min-height: 120px;
-    max-height: 120px;
+    display: none;
   }
 }
 
