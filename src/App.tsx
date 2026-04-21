@@ -158,7 +158,7 @@ const WORKOUT_ACTIVITIES: WorkoutActivityDefinition[] = [
   },
   {
     key: "shoots",
-    label: "Shoots",
+    label: "Shots",
     description: "Shooting reps including form shooting, spot shooting, game shots, or free throws.",
     standards: {
       Beginner: "50 made free throws",
