@@ -55,6 +55,10 @@ export type WorkoutDataSource = "supabase" | "local";
 
 const STORAGE_KEY = "soldiers-athlete-workout-logs";
 
+function normalizeAthleteNameKey(value: string) {
+  return value.trim().toLowerCase();
+}
+
 function normalizeActivityChecks(value: unknown): ActivityChecks {
   const source = typeof value === "object" && value ? value : {};
 
@@ -202,6 +206,7 @@ export async function saveWorkoutLog(
 }> {
   const payload = {
     athlete_name: input.athlete_name.trim(),
+    athlete_name_key: normalizeAthleteNameKey(input.athlete_name),
     team_name: input.team_name,
     workout_date: input.workout_date,
     activities: normalizeActivityChecks(input.activities),
@@ -216,7 +221,7 @@ export async function saveWorkoutLog(
   const { data, error } = await supabase
     .from("athlete_workout_logs")
     .upsert([payload], {
-      onConflict: "athlete_name,team_name,workout_date",
+      onConflict: "athlete_name_key,team_name,workout_date",
     })
     .select()
     .single();
@@ -230,7 +235,7 @@ export async function saveWorkoutLog(
     const now = new Date().toISOString();
     const existingIndex = logs.findIndex(
       (entry) =>
-        entry.athlete_name.toLowerCase() === payload.athlete_name.toLowerCase() &&
+        normalizeAthleteNameKey(entry.athlete_name) === payload.athlete_name_key &&
         entry.team_name === payload.team_name &&
         entry.workout_date === payload.workout_date
     );
