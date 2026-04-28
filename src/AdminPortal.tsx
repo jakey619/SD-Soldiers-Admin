@@ -66,6 +66,14 @@ type Player = {
   photo_url?: string | null;
   birth_certificate_url?: string | null;
   report_card_url?: string | null;
+  team_memberships?: TeamOption[];
+};
+
+type PlayerTeamMembership = {
+  id: string;
+  player_id: string;
+  team_name: TeamOption;
+  is_primary: boolean | null;
 };
 
 type LatestEvaluation = {
@@ -126,9 +134,15 @@ type TeamStats = {
   count: number;
 };
 
-const APP_VERSION = "2.2.1";
+const APP_VERSION = "2.3.0";
 
 const VERSION_HISTORY = [
+  {
+    version: "2.3.0",
+    date: "April 28, 2026",
+    notes:
+      "Added multi-team player roster memberships, athlete login support for players on multiple teams, and a desktop About menu item for version history.",
+  },
   {
     version: "2.2.1",
     date: "April 20, 2026",
@@ -280,6 +294,26 @@ function isProgramTeam(team: TeamOption | null | undefined) {
   return (team ?? "Undecided") !== "Undecided";
 }
 
+function getPlayerTeams(player: Player) {
+  const teams = player.team_memberships ?? [];
+
+  if (teams.length > 0) {
+    return teams;
+  }
+
+  const legacyTeam = player.suggested_team ?? "Undecided";
+  return isProgramTeam(legacyTeam) ? [legacyTeam] : [];
+}
+
+function isPlayerOnTeam(player: Player, team: TeamOption) {
+  return getPlayerTeams(player).includes(team);
+}
+
+function getPlayerTeamLabel(player: Player) {
+  const teams = getPlayerTeams(player);
+  return teams.length > 0 ? teams.join(", ") : "Undecided";
+}
+
 function sanitizePhoneNumber(phone: string | null) {
   if (!phone) return "";
   return phone.replace(/[^\d+]/g, "");
@@ -413,7 +447,7 @@ function playerSearchText(player: Player) {
     player.guardian_2_email,
     player.parent_phone,
     player.parent_email,
-    player.suggested_team,
+    getPlayerTeamLabel(player),
     player.notes,
     player.checked_in ? "checked in" : "not checked in",
     player.birth_certificate_url ? "birth certificate" : "missing birth certificate",
@@ -949,10 +983,36 @@ export default function AdminPortal() {
     }
 
     const loaded = (data ?? []) as Player[];
-    setPlayers(loaded);
+    const { data: membershipData, error: membershipError } = await supabase
+      .from("player_team_memberships")
+      .select("*");
 
-    if (!selectedPlayerId && loaded.length > 0) {
-      setSelectedPlayerId(loaded[0].id);
+    const membershipsByPlayer = new Map<string, TeamOption[]>();
+
+    if (!membershipError) {
+      ((membershipData ?? []) as PlayerTeamMembership[]).forEach((membership) => {
+        if (!isProgramTeam(membership.team_name)) return;
+        const teams = membershipsByPlayer.get(membership.player_id) ?? [];
+        teams.push(membership.team_name);
+        membershipsByPlayer.set(membership.player_id, teams);
+      });
+    }
+
+    const playersWithTeams = loaded.map((player) => {
+      const team_memberships = membershipsByPlayer.get(player.id);
+      return {
+        ...player,
+        team_memberships:
+          team_memberships && team_memberships.length > 0
+            ? team_memberships
+            : getPlayerTeams(player),
+      };
+    });
+
+    setPlayers(playersWithTeams);
+
+    if (!selectedPlayerId && playersWithTeams.length > 0) {
+      setSelectedPlayerId(playersWithTeams[0].id);
     }
   }
 
@@ -1035,7 +1095,7 @@ export default function AdminPortal() {
     return [
       ...new Set(
         players
-          .filter((player) => (player.suggested_team ?? "Undecided") !== "Undecided")
+          .filter((player) => getPlayerTeams(player).length > 0)
           .map((player) => player.grade)
           .filter(Boolean)
       ),
@@ -1082,8 +1142,16 @@ export default function AdminPortal() {
     };
 
     players.forEach((player) => {
-      const team = player.suggested_team ?? "Undecided";
-      groups[team].push(player);
+      const teams = getPlayerTeams(player);
+
+      if (teams.length === 0) {
+        groups.Undecided.push(player);
+        return;
+      }
+
+      teams.forEach((team) => {
+        groups[team].push(player);
+      });
     });
 
     Object.keys(groups).forEach((key) => {
@@ -1104,7 +1172,7 @@ export default function AdminPortal() {
 
   const rosterAssignablePlayers = useMemo(() => {
     return [...players]
-      .filter((player) => (player.suggested_team ?? "Undecided") !== activeRosterTeam)
+      .filter((player) => !isPlayerOnTeam(player, activeRosterTeam))
       .sort((a, b) =>
         `${a.last_name ?? ""} ${a.first_name ?? ""}`.localeCompare(
           `${b.last_name ?? ""} ${b.first_name ?? ""}`
@@ -1130,7 +1198,7 @@ export default function AdminPortal() {
     [players]
   );
   const rosteredPlayers = useMemo(
-    () => players.filter((player) => (player.suggested_team ?? "Undecided") !== "Undecided"),
+    () => players.filter((player) => getPlayerTeams(player).length > 0),
     [players]
   );
 
@@ -1165,7 +1233,7 @@ export default function AdminPortal() {
   const teamStats = useMemo<TeamStats[]>(() => {
     return TEAM_OPTIONS.filter((team) => team !== "Undecided").map((team) => {
       const teamPlayers = rosteredPlayers.filter(
-        (player) => (player.suggested_team ?? "Undecided") === team
+        (player) => isPlayerOnTeam(player, team)
       );
 
       return {
@@ -1187,7 +1255,7 @@ export default function AdminPortal() {
         "Birthdate",
         "Age",
         "Checked In",
-        "Suggested Team",
+        "Teams",
         "Latest Score",
         "Evaluated",
         "Player Phone",
@@ -1224,7 +1292,7 @@ export default function AdminPortal() {
         player.birth_date ?? "",
         calculateAge(player.birth_date)?.toString() ?? "",
         player.checked_in ? "Yes" : "No",
-        player.suggested_team ?? "Undecided",
+        getPlayerTeamLabel(player),
         latest?.total_score?.toString() ?? "",
         latest ? "Yes" : "No",
         player.player_phone ?? "",
@@ -1595,6 +1663,23 @@ export default function AdminPortal() {
       }
     }
 
+    if (isProgramTeam(form.suggested_team)) {
+      const { error: membershipError } = await supabase
+        .from("player_team_memberships")
+        .upsert(
+          {
+            player_id: data.id,
+            team_name: form.suggested_team,
+            is_primary: true,
+          },
+          { onConflict: "player_id,team_name" }
+        );
+
+      if (membershipError) {
+        assetErrors.push(`Roster: ${membershipError.message}`);
+      }
+    }
+
     closeRegistrationModal();
     await refreshAll();
     setSelectedPlayerId(data.id);
@@ -1671,8 +1756,49 @@ export default function AdminPortal() {
       return;
     }
 
+    if (isProgramTeam(editForm.suggested_team)) {
+      const { error: membershipError } = await supabase
+        .from("player_team_memberships")
+        .upsert(
+          {
+            player_id: editingPlayerId,
+            team_name: editForm.suggested_team,
+            is_primary: true,
+          },
+          { onConflict: "player_id,team_name" }
+        );
+
+      if (membershipError) {
+        assetErrors.push(`Roster: ${membershipError.message}`);
+      }
+    } else {
+      const { error: membershipError } = await supabase
+        .from("player_team_memberships")
+        .delete()
+        .eq("player_id", editingPlayerId);
+
+      if (membershipError) {
+        assetErrors.push(`Roster: ${membershipError.message}`);
+      }
+    }
+
     setPlayers((prev) =>
-      prev.map((p) => (p.id === editingPlayerId ? { ...p, ...savedPayload } : p))
+      prev.map((p) =>
+        p.id === editingPlayerId
+          ? {
+              ...p,
+              ...savedPayload,
+              team_memberships: isProgramTeam(editForm.suggested_team)
+                ? [
+                    ...new Set([
+                      ...getPlayerTeams(p),
+                      editForm.suggested_team,
+                    ]),
+                  ]
+                : [],
+            }
+          : p
+      )
     );
 
     setIsEditOpen(false);
@@ -1713,7 +1839,7 @@ export default function AdminPortal() {
     );
   }
 
-  async function updateSuggestedTeam(player: Player, team: TeamOption) {
+  async function setPlayerPrimaryTeam(player: Player, team: TeamOption) {
     const { error } = await supabase
       .from("players")
       .update({ suggested_team: team })
@@ -1721,14 +1847,132 @@ export default function AdminPortal() {
 
     if (error) {
       setStatus(`Team update error: ${error.message}`);
-      return;
+      return false;
     }
 
     setPlayers((prev) =>
       prev.map((p) => (p.id === player.id ? { ...p, suggested_team: team } : p))
     );
 
-    setStatus(`${player.first_name} ${player.last_name} assigned to ${team}.`);
+    return true;
+  }
+
+  async function addPlayerToTeam(player: Player, team: TeamOption) {
+    if (!isProgramTeam(team)) {
+      return removePlayerFromAllTeams(player);
+    }
+
+    const alreadyOnTeam = isPlayerOnTeam(player, team);
+
+    if (!alreadyOnTeam) {
+      const { error } = await supabase.from("player_team_memberships").upsert(
+        {
+          player_id: player.id,
+          team_name: team,
+          is_primary: getPlayerTeams(player).length === 0,
+        },
+        { onConflict: "player_id,team_name" }
+      );
+
+      if (error) {
+        setStatus(`Roster update error: ${error.message}`);
+        return;
+      }
+    }
+
+    const shouldUpdatePrimary = !isProgramTeam(player.suggested_team);
+
+    if (shouldUpdatePrimary) {
+      const updated = await setPlayerPrimaryTeam(player, team);
+      if (!updated) return;
+    }
+
+    setPlayers((prev) =>
+      prev.map((p) => {
+        if (p.id !== player.id) return p;
+        const teams = p.team_memberships ?? getPlayerTeams(p);
+        return {
+          ...p,
+          team_memberships: teams.includes(team) ? teams : [...teams, team],
+          suggested_team: shouldUpdatePrimary ? team : p.suggested_team,
+        };
+      })
+    );
+
+    setStatus(`${player.first_name} ${player.last_name} added to ${team}.`);
+  }
+
+  async function removePlayerFromTeam(player: Player, team: TeamOption) {
+    const { error } = await supabase
+      .from("player_team_memberships")
+      .delete()
+      .eq("player_id", player.id)
+      .eq("team_name", team);
+
+    if (error) {
+      setStatus(`Roster update error: ${error.message}`);
+      return;
+    }
+
+    const remainingTeams = getPlayerTeams(player).filter((entry) => entry !== team);
+    const nextPrimary = remainingTeams[0] ?? "Undecided";
+
+    if ((player.suggested_team ?? "Undecided") === team) {
+      const updated = await setPlayerPrimaryTeam(player, nextPrimary);
+      if (!updated) return;
+    }
+
+    setPlayers((prev) =>
+      prev.map((p) =>
+        p.id === player.id
+          ? {
+              ...p,
+              team_memberships: remainingTeams,
+              suggested_team:
+                (p.suggested_team ?? "Undecided") === team
+                  ? nextPrimary
+                  : p.suggested_team,
+            }
+          : p
+      )
+    );
+
+    setStatus(`${player.first_name} ${player.last_name} removed from ${team}.`);
+  }
+
+  async function removePlayerFromAllTeams(player: Player) {
+    const { error } = await supabase
+      .from("player_team_memberships")
+      .delete()
+      .eq("player_id", player.id);
+
+    if (error) {
+      setStatus(`Roster update error: ${error.message}`);
+      return;
+    }
+
+    const updated = await setPlayerPrimaryTeam(player, "Undecided");
+    if (!updated) return;
+
+    setPlayers((prev) =>
+      prev.map((p) =>
+        p.id === player.id
+          ? { ...p, team_memberships: [], suggested_team: "Undecided" }
+          : p
+      )
+    );
+
+    setStatus(`${player.first_name} ${player.last_name} removed from all rosters.`);
+  }
+
+  async function updateSuggestedTeam(player: Player, team: TeamOption) {
+    if (!isProgramTeam(team)) {
+      await removePlayerFromAllTeams(player);
+      return;
+    }
+
+    await setPlayerPrimaryTeam(player, team);
+    await addPlayerToTeam(player, team);
   }
 
   async function addPlayerToRoster() {
@@ -1743,7 +1987,7 @@ export default function AdminPortal() {
       return;
     }
 
-    await updateSuggestedTeam(player, activeRosterTeam);
+    await addPlayerToTeam(player, activeRosterTeam);
     setRosterAddPlayerId("");
   }
 
@@ -1758,26 +2002,27 @@ export default function AdminPortal() {
       return;
     }
 
-    if ((player.suggested_team ?? "Undecided") === team) {
+    if (team !== "Undecided" && isPlayerOnTeam(player, team)) {
+      setStatus(`${player.first_name} ${player.last_name} is already on ${team}.`);
       return;
     }
 
-    await updateSuggestedTeam(player, team);
+    await addPlayerToTeam(player, team);
   }
 
   function getMobileRosterTarget(player: Player) {
-    return mobileRosterTargets[player.id] ?? (player.suggested_team ?? "Undecided");
+    return mobileRosterTargets[player.id] ?? "Undecided";
   }
 
   async function movePlayerFromMobile(player: Player) {
     const targetTeam = getMobileRosterTarget(player);
 
-    if ((player.suggested_team ?? "Undecided") === targetTeam) {
+    if (targetTeam !== "Undecided" && isPlayerOnTeam(player, targetTeam)) {
       setStatus(`${player.first_name} ${player.last_name} is already on ${targetTeam}.`);
       return;
     }
 
-    await updateSuggestedTeam(player, targetTeam);
+    await addPlayerToTeam(player, targetTeam);
   }
 
   function downloadRosterImportTemplate() {
@@ -1912,9 +2157,27 @@ export default function AdminPortal() {
           return;
         }
 
+        if (isProgramTeam(matchedTeam)) {
+          const { error: membershipError } = await supabase
+            .from("player_team_memberships")
+            .upsert(
+              {
+                player_id: existingPlayer.id,
+                team_name: matchedTeam,
+                is_primary: getPlayerTeams(existingPlayer).length === 0,
+              },
+              { onConflict: "player_id,team_name" }
+            );
+
+          if (membershipError) {
+            setStatus(`Roster upload error: ${membershipError.message}`);
+            return;
+          }
+        }
+
         updatedCount += 1;
       } else {
-        const { error } = await insertPlayerRecord({
+        const { data: insertedPlayer, error } = await insertPlayerRecord({
           ...payload,
           checked_in: false,
         });
@@ -1922,6 +2185,24 @@ export default function AdminPortal() {
         if (error) {
           setStatus(`Roster upload error: ${error.message}`);
           return;
+        }
+
+        if (insertedPlayer && isProgramTeam(matchedTeam)) {
+          const { error: membershipError } = await supabase
+            .from("player_team_memberships")
+            .upsert(
+              {
+                player_id: insertedPlayer.id,
+                team_name: matchedTeam,
+                is_primary: true,
+              },
+              { onConflict: "player_id,team_name" }
+            );
+
+          if (membershipError) {
+            setStatus(`Roster upload error: ${membershipError.message}`);
+            return;
+          }
         }
 
         createdCount += 1;
@@ -2019,10 +2300,32 @@ export default function AdminPortal() {
       .update({ suggested_team: evalForm.suggested_team })
       .eq("id", selectedPlayer.id);
 
+    if (isProgramTeam(evalForm.suggested_team)) {
+      await supabase.from("player_team_memberships").upsert(
+        {
+          player_id: selectedPlayer.id,
+          team_name: evalForm.suggested_team,
+          is_primary: getPlayerTeams(selectedPlayer).length === 0,
+        },
+        { onConflict: "player_id,team_name" }
+      );
+    }
+
     setPlayers((prev) =>
       prev.map((p) =>
         p.id === selectedPlayer.id
-          ? { ...p, suggested_team: evalForm.suggested_team }
+          ? {
+              ...p,
+              suggested_team: evalForm.suggested_team,
+              team_memberships: isProgramTeam(evalForm.suggested_team)
+                ? [
+                    ...new Set([
+                      ...getPlayerTeams(p),
+                      evalForm.suggested_team,
+                    ]),
+                  ]
+                : getPlayerTeams(p),
+            }
           : p
       )
     );
@@ -2092,6 +2395,11 @@ export default function AdminPortal() {
           label="Team Documents"
           active={tab === "documents"}
           onClick={() => goToTab("documents")}
+        />
+        <NavButton
+          label="About"
+          active={isAboutOpen}
+          onClick={() => setIsAboutOpen(true)}
         />
       </div>
 
@@ -2227,7 +2535,7 @@ export default function AdminPortal() {
                     Birthdate {formatBirthDate(player.birth_date)} | Age{" "}
                     {calculateAge(player.birth_date) ?? "-"} | Jersey #{player.jersey_number || "-"}
                   </div>
-                  <div className="player-card-meta">Team: {player.suggested_team ?? "Undecided"}</div>
+                  <div className="player-card-meta">Teams: {getPlayerTeamLabel(player)}</div>
                   <div className="player-card-actions">
                     <button
                       type="button"
@@ -2404,7 +2712,7 @@ export default function AdminPortal() {
                       </span>
 
                       <span className="badge badge-team">
-                        {selectedPlayer.suggested_team ?? "Undecided"}
+                        {getPlayerTeamLabel(selectedPlayer)}
                       </span>
 
                       <span
@@ -2663,7 +2971,7 @@ export default function AdminPortal() {
                 <option value="">Add existing player to this roster</option>
                 {rosterAssignablePlayers.map((player) => (
                   <option key={player.id} value={player.id}>
-                    {player.last_name}, {player.first_name} ({player.suggested_team ?? "Undecided"})
+                    {player.last_name}, {player.first_name} ({getPlayerTeamLabel(player)})
                   </option>
                 ))}
               </select>
@@ -2739,7 +3047,14 @@ export default function AdminPortal() {
                         className="secondary-button"
                         onClick={() => movePlayerFromMobile(player)}
                       >
-                        Move
+                        Add
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => removePlayerFromTeam(player, activeRosterTeam)}
+                      >
+                        Remove
                       </button>
                     </div>
                     <div className="roster-card-actions">
@@ -2824,7 +3139,14 @@ export default function AdminPortal() {
                             className="secondary-button"
                             onClick={() => movePlayerFromMobile(player)}
                           >
-                            Move
+                            Add
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() => removePlayerFromTeam(player, team)}
+                          >
+                            Remove
                           </button>
                         </div>
                       </div>
@@ -2902,7 +3224,7 @@ export default function AdminPortal() {
                   <div className="roster-drop-zone-title">Unassigned / Available</div>
                   <div className="roster-management-list">
                     {rosterManagementFilteredPlayers
-                      .filter((player) => (player.suggested_team ?? "Undecided") === "Undecided")
+                      .filter((player) => getPlayerTeams(player).length === 0)
                       .map((player) => (
                         <div
                           key={player.id}
@@ -2940,13 +3262,13 @@ export default function AdminPortal() {
                               className="secondary-button mobile-roster-move"
                               onClick={() => movePlayerFromMobile(player)}
                             >
-                              Move
+                              Add
                             </button>
                           </div>
                         </div>
                       ))}
                     {rosterManagementFilteredPlayers.filter(
-                      (player) => (player.suggested_team ?? "Undecided") === "Undecided"
+                      (player) => getPlayerTeams(player).length === 0
                     ).length === 0 && (
                       <div className="empty-text">No unassigned players.</div>
                     )}
@@ -2955,7 +3277,7 @@ export default function AdminPortal() {
 
                 <div className="roster-management-list">
                   {rosterManagementFilteredPlayers
-                    .filter((player) => (player.suggested_team ?? "Undecided") !== "Undecided")
+                    .filter((player) => getPlayerTeams(player).length > 0)
                     .map((player) => (
                       <div
                         key={player.id}
@@ -2969,7 +3291,7 @@ export default function AdminPortal() {
                           {player.last_name}, {player.first_name}
                         </div>
                         <div className="roster-management-meta">
-                          {player.suggested_team ?? "Undecided"} | {formatGradeLabel(player.grade)} | #{player.jersey_number || "-"}
+                          {getPlayerTeamLabel(player)} | {formatGradeLabel(player.grade)} | #{player.jersey_number || "-"}
                         </div>
                         <div className="mobile-roster-assignment">
                           <select
@@ -2993,7 +3315,7 @@ export default function AdminPortal() {
                             className="secondary-button mobile-roster-move"
                             onClick={() => movePlayerFromMobile(player)}
                           >
-                            Move
+                            Add
                           </button>
                         </div>
                       </div>
@@ -3008,7 +3330,7 @@ export default function AdminPortal() {
                   <div className="panel-kicker">Drag And Drop</div>
                   <h2 className="panel-title">Team Boards</h2>
                 </div>
-                <div className="empty-text">Drop players onto a roster to move them.</div>
+                <div className="empty-text">Drop players onto a roster to add them.</div>
               </div>
 
               <div className="roster-management-grid">
@@ -3060,7 +3382,14 @@ export default function AdminPortal() {
                               className="secondary-button mobile-roster-move"
                               onClick={() => movePlayerFromMobile(player)}
                             >
-                              Move
+                              Add
+                            </button>
+                            <button
+                              type="button"
+                              className="secondary-button mobile-roster-move"
+                              onClick={() => removePlayerFromTeam(player, team)}
+                            >
+                              Remove
                             </button>
                           </div>
                         </div>
@@ -3389,7 +3718,7 @@ export default function AdminPortal() {
                       {viewingPlayer.checked_in ? "Checked In" : "Not Checked In"}
                     </span>
                     <span className="badge badge-team">
-                      {viewingPlayer.suggested_team ?? "Undecided"}
+                      {getPlayerTeamLabel(viewingPlayer)}
                     </span>
                   </div>
                 </div>

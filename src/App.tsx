@@ -64,7 +64,12 @@ type AthletePlayerOption = {
   teamName: TeamName;
 };
 
-const APP_VERSION = "2.2.1";
+type PlayerTeamMembership = {
+  player_id: string;
+  team_name: TeamName;
+};
+
+const APP_VERSION = "2.3.0";
 
 const TEAM_NAMES: TeamName[] = [
   "15u Salute",
@@ -549,21 +554,41 @@ function useAthletePlayers() {
         return;
       }
 
+      const { data: membershipData } = await supabase
+        .from("player_team_memberships")
+        .select("player_id, team_name");
+
+      const teamsByPlayer = new Map<string, TeamName[]>();
+
+      ((membershipData ?? []) as PlayerTeamMembership[]).forEach((membership) => {
+        if (membership.team_name === "Undecided") return;
+        const teams = teamsByPlayer.get(String(membership.player_id)) ?? [];
+        teams.push(membership.team_name);
+        teamsByPlayer.set(String(membership.player_id), teams);
+      });
+
       const nextPlayers = (data ?? [])
-        .map((player) => {
+        .flatMap((player) => {
           const firstName = String(player.first_name ?? "").trim();
           const lastName = String(player.last_name ?? "").trim();
           const fullName = [firstName, lastName].filter(Boolean).join(" ").trim();
 
           if (!fullName) {
-            return null;
+            return [];
           }
 
-          return {
-            id: String(player.id),
+          const playerId = String(player.id);
+          const membershipTeams = teamsByPlayer.get(playerId);
+          const teams =
+            membershipTeams && membershipTeams.length > 0
+              ? membershipTeams
+              : [((player.suggested_team as TeamName | null) ?? "Undecided") as TeamName];
+
+          return teams.map((teamName) => ({
+            id: `${playerId}-${teamName}`,
             fullName,
-            teamName: ((player.suggested_team as TeamName | null) ?? "Undecided") as TeamName,
-          };
+            teamName,
+          }));
         })
         .filter((player): player is AthletePlayerOption => Boolean(player));
 
