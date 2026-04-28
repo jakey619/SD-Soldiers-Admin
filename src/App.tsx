@@ -69,7 +69,7 @@ type PlayerTeamMembership = {
   team_name: TeamName;
 };
 
-const APP_VERSION = "2.3.0";
+const APP_VERSION = "2.4.0";
 
 const TEAM_NAMES: TeamName[] = [
   "15u Salute",
@@ -541,7 +541,7 @@ function useAthletePlayers() {
 
       const { data, error: loadError } = await supabase
         .from("players")
-        .select("id, first_name, last_name, suggested_team")
+        .select("id, first_name, last_name, suggested_team, player_status")
         .order("last_name", { ascending: true })
         .order("first_name", { ascending: true });
 
@@ -569,6 +569,10 @@ function useAthletePlayers() {
 
       const nextPlayers = (data ?? [])
         .flatMap((player) => {
+          if ((player.player_status ?? "active") !== "active") {
+            return [];
+          }
+
           const firstName = String(player.first_name ?? "").trim();
           const lastName = String(player.last_name ?? "").trim();
           const fullName = [firstName, lastName].filter(Boolean).join(" ").trim();

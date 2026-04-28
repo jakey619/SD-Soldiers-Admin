@@ -39,6 +39,9 @@ type MainTab =
   | "roster-management"
   | "documents";
 
+type PlayerStatus = "active" | "inactive" | "archived";
+type PlayerStatusFilter = PlayerStatus | "all";
+
 type Player = {
   id: string;
   first_name: string | null;
@@ -67,6 +70,7 @@ type Player = {
   birth_certificate_url?: string | null;
   report_card_url?: string | null;
   team_memberships?: TeamOption[];
+  player_status?: PlayerStatus | null;
 };
 
 type PlayerTeamMembership = {
@@ -134,9 +138,15 @@ type TeamStats = {
   count: number;
 };
 
-const APP_VERSION = "2.3.0";
+const APP_VERSION = "2.4.0";
 
 const VERSION_HISTORY = [
+  {
+    version: "2.4.0",
+    date: "April 28, 2026",
+    notes:
+      "Added player status controls so inactive and archived players stay out of daily workflows while remaining recoverable from admin filters.",
+  },
   {
     version: "2.3.0",
     date: "April 28, 2026",
@@ -219,6 +229,7 @@ const MANAGEMENT_DOCUMENT_CATEGORIES: {
 ];
 
 const OPTIONAL_PLAYER_COLUMNS = new Set([
+  "player_status",
   "player_email",
   "uniform_size",
   "guardian_1_name",
@@ -292,6 +303,19 @@ function formatGradeLabel(grade: string | null) {
 
 function isProgramTeam(team: TeamOption | null | undefined) {
   return (team ?? "Undecided") !== "Undecided";
+}
+
+function getPlayerStatus(player: Player): PlayerStatus {
+  return player.player_status ?? "active";
+}
+
+function isActivePlayer(player: Player) {
+  return getPlayerStatus(player) === "active";
+}
+
+function getPlayerStatusLabel(player: Player) {
+  const status = getPlayerStatus(player);
+  return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
 function getPlayerTeams(player: Player) {
@@ -448,6 +472,7 @@ function playerSearchText(player: Player) {
     player.parent_phone,
     player.parent_email,
     getPlayerTeamLabel(player),
+    getPlayerStatusLabel(player),
     player.notes,
     player.checked_in ? "checked in" : "not checked in",
     player.birth_certificate_url ? "birth certificate" : "missing birth certificate",
@@ -922,6 +947,8 @@ export default function AdminPortal() {
   const [playerEvaluations, setPlayerEvaluations] = useState<Evaluation[]>([]);
   const [status, setStatus] = useState("Loading...");
   const [search, setSearch] = useState("");
+  const [playerStatusFilter, setPlayerStatusFilter] =
+    useState<PlayerStatusFilter>("active");
   const [doorSearch, setDoorSearch] = useState("");
   const [tab, setTab] = useState<MainTab>("players");
   const [selectedPlayerId, setSelectedPlayerId] = useState<string>("");
@@ -1011,8 +1038,10 @@ export default function AdminPortal() {
 
     setPlayers(playersWithTeams);
 
-    if (!selectedPlayerId && playersWithTeams.length > 0) {
-      setSelectedPlayerId(playersWithTeams[0].id);
+    const firstActivePlayer = playersWithTeams.find((player) => isActivePlayer(player));
+
+    if (!selectedPlayerId && firstActivePlayer) {
+      setSelectedPlayerId(firstActivePlayer.id);
     }
   }
 
@@ -1083,6 +1112,11 @@ export default function AdminPortal() {
     return map;
   }, [latestEvaluations]);
 
+  const activePlayers = useMemo(
+    () => players.filter((player) => isActivePlayer(player)),
+    [players]
+  );
+
   useEffect(() => {
     if (selectedPlayerId) {
       loadPlayerEvaluations(selectedPlayerId);
@@ -1094,7 +1128,7 @@ export default function AdminPortal() {
   const gradeOptions = useMemo(() => {
     return [
       ...new Set(
-        players
+        activePlayers
           .filter((player) => getPlayerTeams(player).length > 0)
           .map((player) => player.grade)
           .filter(Boolean)
@@ -1102,18 +1136,23 @@ export default function AdminPortal() {
     ]
       .map((grade) => grade as string)
       .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-  }, [players]);
+  }, [activePlayers]);
 
   const filteredPlayers = useMemo(() => {
-    return players.filter((player) => {
+    const source =
+      playerStatusFilter === "all"
+        ? players
+        : players.filter((player) => getPlayerStatus(player) === playerStatusFilter);
+
+    return source.filter((player) => {
       const matchesSearch = playerSearchText(player).includes(search.toLowerCase());
       return matchesSearch;
     });
-  }, [players, search]);
+  }, [players, search, playerStatusFilter]);
 
   const doorPlayers = useMemo(() => {
     const term = doorSearch.toLowerCase();
-    return players
+    return activePlayers
       .filter((player) => {
         return playerSearchText(player).includes(term);
       })
@@ -1122,7 +1161,7 @@ export default function AdminPortal() {
           `${b.last_name ?? ""} ${b.first_name ?? ""}`
         )
       );
-  }, [players, doorSearch]);
+  }, [activePlayers, doorSearch]);
 
   const rosterGroups = useMemo(() => {
     const groups: Record<TeamOption, Player[]> = {
@@ -1141,7 +1180,7 @@ export default function AdminPortal() {
       Undecided: [],
     };
 
-    players.forEach((player) => {
+    activePlayers.forEach((player) => {
       const teams = getPlayerTeams(player);
 
       if (teams.length === 0) {
@@ -1166,40 +1205,40 @@ export default function AdminPortal() {
     });
 
     return groups;
-  }, [players, latestEvalMap]);
+  }, [activePlayers, latestEvalMap]);
 
   const activeRosterPlayers = rosterGroups[activeRosterTeam] ?? [];
 
   const rosterAssignablePlayers = useMemo(() => {
-    return [...players]
+    return [...activePlayers]
       .filter((player) => !isPlayerOnTeam(player, activeRosterTeam))
       .sort((a, b) =>
         `${a.last_name ?? ""} ${a.first_name ?? ""}`.localeCompare(
           `${b.last_name ?? ""} ${b.first_name ?? ""}`
         )
       );
-  }, [players, activeRosterTeam, rosterAddPlayerId]);
+  }, [activePlayers, activeRosterTeam, rosterAddPlayerId]);
 
   const rosterManagementFilteredPlayers = useMemo(() => {
     const term = rosterManagementSearch.toLowerCase();
     const source = term
-      ? players.filter((player) => playerSearchText(player).includes(term))
-      : players;
+      ? activePlayers.filter((player) => playerSearchText(player).includes(term))
+      : activePlayers;
 
     return [...source].sort((a, b) =>
       `${a.last_name ?? ""} ${a.first_name ?? ""}`.localeCompare(
         `${b.last_name ?? ""} ${b.first_name ?? ""}`
       )
     );
-  }, [players, rosterManagementSearch]);
+  }, [activePlayers, rosterManagementSearch]);
 
   const checkedInCount = useMemo(
-    () => players.filter((p) => p.checked_in).length,
-    [players]
+    () => activePlayers.filter((p) => p.checked_in).length,
+    [activePlayers]
   );
   const rosteredPlayers = useMemo(
-    () => players.filter((player) => getPlayerTeams(player).length > 0),
-    [players]
+    () => activePlayers.filter((player) => getPlayerTeams(player).length > 0),
+    [activePlayers]
   );
 
   const evaluatedCount = useMemo(() => {
@@ -1207,7 +1246,7 @@ export default function AdminPortal() {
     return ids.size;
   }, [latestEvaluations]);
 
-  const notCheckedInCount = players.length - checkedInCount;
+  const notCheckedInCount = activePlayers.length - checkedInCount;
   const mobileTabItems: { key: MainTab; shortLabel: string }[] = [
     { key: "players", shortLabel: "Players" },
     { key: "rosters", shortLabel: "Teams" },
@@ -1256,6 +1295,7 @@ export default function AdminPortal() {
         "Age",
         "Checked In",
         "Teams",
+        "Status",
         "Latest Score",
         "Evaluated",
         "Player Phone",
@@ -1293,6 +1333,7 @@ export default function AdminPortal() {
         calculateAge(player.birth_date)?.toString() ?? "",
         player.checked_in ? "Yes" : "No",
         getPlayerTeamLabel(player),
+        getPlayerStatusLabel(player),
         latest?.total_score?.toString() ?? "",
         latest ? "Yes" : "No",
         player.player_phone ?? "",
@@ -1628,6 +1669,7 @@ export default function AdminPortal() {
       parent_email: form.guardian_1_email || null,
       checked_in: true,
       suggested_team: form.suggested_team,
+      player_status: "active",
       notes: "Onsite registration",
     };
 
@@ -1836,6 +1878,26 @@ export default function AdminPortal() {
       `${player.first_name} ${player.last_name} ${
         newValue ? "checked in" : "marked absent"
       }.`
+    );
+  }
+
+  async function updatePlayerStatus(player: Player, status: PlayerStatus) {
+    const { error } = await supabase
+      .from("players")
+      .update({ player_status: status })
+      .eq("id", player.id);
+
+    if (error) {
+      setStatus(`Status update error: ${error.message}`);
+      return;
+    }
+
+    setPlayers((prev) =>
+      prev.map((p) => (p.id === player.id ? { ...p, player_status: status } : p))
+    );
+
+    setStatus(
+      `${player.first_name} ${player.last_name} marked ${status}.`
     );
   }
 
@@ -2505,6 +2567,18 @@ export default function AdminPortal() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
+              <select
+                className="select"
+                value={playerStatusFilter}
+                onChange={(e) =>
+                  setPlayerStatusFilter(e.target.value as PlayerStatusFilter)
+                }
+              >
+                <option value="active">Active players</option>
+                <option value="inactive">Inactive players</option>
+                <option value="archived">Archived players</option>
+                <option value="all">All players</option>
+              </select>
             </div>
 
             <div className="players-grid">
@@ -2536,6 +2610,9 @@ export default function AdminPortal() {
                     {calculateAge(player.birth_date) ?? "-"} | Jersey #{player.jersey_number || "-"}
                   </div>
                   <div className="player-card-meta">Teams: {getPlayerTeamLabel(player)}</div>
+                  <div className="player-card-meta">
+                    Status: {getPlayerStatusLabel(player)}
+                  </div>
                   <div className="player-card-actions">
                     <button
                       type="button"
@@ -2547,6 +2624,29 @@ export default function AdminPortal() {
                     >
                       View Details
                     </button>
+                    {isActivePlayer(player) ? (
+                      <button
+                        type="button"
+                        className="secondary-button player-card-action-button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          updatePlayerStatus(player, "archived");
+                        }}
+                      >
+                        Archive
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="secondary-button player-card-action-button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          updatePlayerStatus(player, "active");
+                        }}
+                      >
+                        Restore
+                      </button>
+                    )}
                   </div>
                 </button>
               ))}
@@ -3720,6 +3820,9 @@ export default function AdminPortal() {
                     <span className="badge badge-team">
                       {getPlayerTeamLabel(viewingPlayer)}
                     </span>
+                    <span className="badge badge-neutral">
+                      {getPlayerStatusLabel(viewingPlayer)}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -3747,6 +3850,32 @@ export default function AdminPortal() {
                 >
                   Edit Player
                 </button>
+                {isActivePlayer(viewingPlayer) ? (
+                  <>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => updatePlayerStatus(viewingPlayer, "inactive")}
+                    >
+                      Mark Inactive
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => updatePlayerStatus(viewingPlayer, "archived")}
+                    >
+                      Archive
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => updatePlayerStatus(viewingPlayer, "active")}
+                  >
+                    Restore
+                  </button>
+                )}
               </div>
 
               <div className="player-detail-section">
